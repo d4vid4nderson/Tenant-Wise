@@ -1,4 +1,4 @@
- # TenantWise
+ # Tenant Wise
 
   AI-powered legal document generation for small Texas landlords (1-10 units).
 
