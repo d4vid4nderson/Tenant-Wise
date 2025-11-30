@@ -150,7 +150,7 @@ export async function GET(
     let newStatus = document.signature_status;
     if (result.isComplete) {
       newStatus = 'completed';
-    } else if (result.signatures?.some(s => s.statusCode === 'signed')) {
+    } else if (result.signatures?.some((s: any) => s.statusCode === 'signed')) {
       newStatus = 'partially_signed';
     }
 
@@ -168,7 +168,7 @@ export async function GET(
       signatureRequestId: document.signature_request_id,
       status: newStatus,
       isComplete: result.isComplete,
-      signatures: result.signatures?.map(s => ({
+      signatures: result.signatures?.map((s: any) => ({
         signerEmail: s.signerEmailAddress,
         signerName: s.signerName,
         status: s.statusCode,

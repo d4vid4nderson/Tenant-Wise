@@ -1,24 +1,5 @@
-import * as DropboxSign from '@dropbox/sign';
-
-// Lazy-load API clients to avoid initialization during build
-let _signatureRequestApi: DropboxSign.SignatureRequestApi | null = null;
-let _embeddedApi: DropboxSign.EmbeddedApi | null = null;
-
-function getSignatureRequestApi() {
-  if (!_signatureRequestApi) {
-    _signatureRequestApi = new DropboxSign.SignatureRequestApi();
-    _signatureRequestApi.username = process.env.DROPBOX_SIGN_API_KEY!;
-  }
-  return _signatureRequestApi;
-}
-
-function getEmbeddedApi() {
-  if (!_embeddedApi) {
-    _embeddedApi = new DropboxSign.EmbeddedApi();
-    _embeddedApi.username = process.env.DROPBOX_SIGN_API_KEY!;
-  }
-  return _embeddedApi;
-}
+// All imports are dynamic to avoid build-time initialization
+// The @dropbox/sign library initializes at import time, which fails without API keys
 
 export interface SignatureRequestParams {
   documentTitle: string;
@@ -39,11 +20,34 @@ export interface EmbeddedSignatureResult {
   signUrl: string;
 }
 
+// Lazy-loaded API clients
+let _signatureRequestApi: any = null;
+let _embeddedApi: any = null;
+
+async function getSignatureRequestApi() {
+  if (!_signatureRequestApi) {
+    const DropboxSign = await import('@dropbox/sign');
+    _signatureRequestApi = new DropboxSign.SignatureRequestApi();
+    _signatureRequestApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+  }
+  return _signatureRequestApi;
+}
+
+async function getEmbeddedApi() {
+  if (!_embeddedApi) {
+    const DropboxSign = await import('@dropbox/sign');
+    _embeddedApi = new DropboxSign.EmbeddedApi();
+    _embeddedApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+  }
+  return _embeddedApi;
+}
+
 /**
  * Create a signature request and send it to signers via email
  */
 export async function createSignatureRequest(params: SignatureRequestParams) {
   const { documentTitle, documentContent, signers, message, subject } = params;
+  const DropboxSign = await import('@dropbox/sign');
 
   // Convert markdown content to a file buffer (as text file for now)
   const fileBuffer = Buffer.from(documentContent, 'utf-8');
@@ -54,19 +58,20 @@ export async function createSignatureRequest(params: SignatureRequestParams) {
     order: index,
   }));
 
-  const data: DropboxSign.SignatureRequestSendRequest = {
+  const data: InstanceType<typeof DropboxSign.SignatureRequestSendRequest> = {
     title: documentTitle,
     subject: subject || `Please sign: ${documentTitle}`,
     message: message || 'Please review and sign this document at your earliest convenience.',
     signers: signersList,
     // Buffer is compatible at runtime, type assertion needed for strict typing
-    files: [fileBuffer as unknown as DropboxSign.RequestFile],
+    files: [fileBuffer as any],
     fileUrls: undefined,
     testMode: process.env.NODE_ENV !== 'production',
   };
 
   try {
-    const response = await getSignatureRequestApi().signatureRequestSend(data);
+    const api = await getSignatureRequestApi();
+    const response = await api.signatureRequestSend(data);
     return {
       success: true,
       signatureRequestId: response.body.signatureRequest?.signatureRequestId,
@@ -83,6 +88,7 @@ export async function createSignatureRequest(params: SignatureRequestParams) {
  */
 export async function createEmbeddedSignatureRequest(params: SignatureRequestParams): Promise<EmbeddedSignatureResult> {
   const { documentTitle, documentContent, signers, message, subject } = params;
+  const DropboxSign = await import('@dropbox/sign');
 
   // Convert content to a file buffer
   const fileBuffer = Buffer.from(documentContent, 'utf-8');
@@ -93,19 +99,20 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
     order: index,
   }));
 
-  const data: DropboxSign.SignatureRequestCreateEmbeddedRequest = {
+  const data: InstanceType<typeof DropboxSign.SignatureRequestCreateEmbeddedRequest> = {
     clientId: process.env.DROPBOX_SIGN_CLIENT_ID!,
     title: documentTitle,
     subject: subject || `Please sign: ${documentTitle}`,
     message: message || 'Please review and sign this document.',
     signers: signersList,
     // Buffer is compatible at runtime, type assertion needed for strict typing
-    files: [fileBuffer as unknown as DropboxSign.RequestFile],
+    files: [fileBuffer as any],
     testMode: process.env.NODE_ENV !== 'production',
   };
 
   try {
-    const response = await getSignatureRequestApi().signatureRequestCreateEmbedded(data);
+    const api = await getSignatureRequestApi();
+    const response = await api.signatureRequestCreateEmbedded(data);
     const signatureRequestId = response.body.signatureRequest?.signatureRequestId;
 
     if (!signatureRequestId) {
@@ -119,7 +126,8 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
     }
 
     // Get the embedded sign URL
-    const embeddedResponse = await getEmbeddedApi().embeddedSignUrl(firstSignature.signatureId);
+    const embeddedApi = await getEmbeddedApi();
+    const embeddedResponse = await embeddedApi.embeddedSignUrl(firstSignature.signatureId);
 
     return {
       signatureRequestId,
@@ -136,7 +144,8 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
  */
 export async function getSignatureRequestStatus(signatureRequestId: string) {
   try {
-    const response = await getSignatureRequestApi().signatureRequestGet(signatureRequestId);
+    const api = await getSignatureRequestApi();
+    const response = await api.signatureRequestGet(signatureRequestId);
     return {
       success: true,
       signatureRequest: response.body.signatureRequest,
@@ -154,7 +163,8 @@ export async function getSignatureRequestStatus(signatureRequestId: string) {
  */
 export async function cancelSignatureRequest(signatureRequestId: string) {
   try {
-    await getSignatureRequestApi().signatureRequestCancel(signatureRequestId);
+    const api = await getSignatureRequestApi();
+    await api.signatureRequestCancel(signatureRequestId);
     return { success: true };
   } catch (error) {
     console.error('Error canceling signature request:', error);
@@ -167,10 +177,12 @@ export async function cancelSignatureRequest(signatureRequestId: string) {
  */
 export async function sendReminder(signatureRequestId: string, emailAddress: string) {
   try {
-    const data: DropboxSign.SignatureRequestRemindRequest = {
+    const DropboxSign = await import('@dropbox/sign');
+    const data: InstanceType<typeof DropboxSign.SignatureRequestRemindRequest> = {
       emailAddress,
     };
-    await getSignatureRequestApi().signatureRequestRemind(signatureRequestId, data);
+    const api = await getSignatureRequestApi();
+    await api.signatureRequestRemind(signatureRequestId, data);
     return { success: true };
   } catch (error) {
     console.error('Error sending reminder:', error);
@@ -183,7 +195,8 @@ export async function sendReminder(signatureRequestId: string, emailAddress: str
  */
 export async function downloadSignedDocument(signatureRequestId: string) {
   try {
-    const response = await getSignatureRequestApi().signatureRequestFiles(signatureRequestId, 'pdf');
+    const api = await getSignatureRequestApi();
+    const response = await api.signatureRequestFiles(signatureRequestId, 'pdf');
     return response.body;
   } catch (error) {
     console.error('Error downloading signed document:', error);
