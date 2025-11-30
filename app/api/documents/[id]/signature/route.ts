@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { createSignatureRequest, getSignatureRequestStatus, cancelSignatureRequest, sendReminder } from '@/lib/dropbox-sign';
+
+// Dynamic imports to avoid build-time initialization
+const getDropboxSign = () => import('@/lib/dropbox-sign');
 
 // POST - Create a new signature request
 export async function POST(
@@ -70,6 +72,7 @@ export async function POST(
     }
 
     // Create signature request
+    const { createSignatureRequest } = await getDropboxSign();
     const result = await createSignatureRequest({
       documentTitle: document.title,
       documentContent: document.content,
@@ -140,6 +143,7 @@ export async function GET(
     }
 
     // Get status from Dropbox Sign
+    const { getSignatureRequestStatus } = await getDropboxSign();
     const result = await getSignatureRequestStatus(document.signature_request_id);
 
     // Update local status if changed
@@ -215,6 +219,7 @@ export async function DELETE(
     }
 
     // Cancel the signature request
+    const { cancelSignatureRequest } = await getDropboxSign();
     await cancelSignatureRequest(document.signature_request_id);
 
     // Update document
@@ -285,6 +290,7 @@ export async function PATCH(
     }
 
     // Send reminder
+    const { sendReminder } = await getDropboxSign();
     await sendReminder(document.signature_request_id, emailAddress);
 
     return NextResponse.json({
