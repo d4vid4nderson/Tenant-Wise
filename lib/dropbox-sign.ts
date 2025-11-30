@@ -1,11 +1,24 @@
 import * as DropboxSign from '@dropbox/sign';
 
-// Initialize the Dropbox Sign API client
-const signatureRequestApi = new DropboxSign.SignatureRequestApi();
-signatureRequestApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+// Lazy-load API clients to avoid initialization during build
+let _signatureRequestApi: DropboxSign.SignatureRequestApi | null = null;
+let _embeddedApi: DropboxSign.EmbeddedApi | null = null;
 
-const embeddedApi = new DropboxSign.EmbeddedApi();
-embeddedApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+function getSignatureRequestApi() {
+  if (!_signatureRequestApi) {
+    _signatureRequestApi = new DropboxSign.SignatureRequestApi();
+    _signatureRequestApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+  }
+  return _signatureRequestApi;
+}
+
+function getEmbeddedApi() {
+  if (!_embeddedApi) {
+    _embeddedApi = new DropboxSign.EmbeddedApi();
+    _embeddedApi.username = process.env.DROPBOX_SIGN_API_KEY!;
+  }
+  return _embeddedApi;
+}
 
 export interface SignatureRequestParams {
   documentTitle: string;
@@ -53,7 +66,7 @@ export async function createSignatureRequest(params: SignatureRequestParams) {
   };
 
   try {
-    const response = await signatureRequestApi.signatureRequestSend(data);
+    const response = await getSignatureRequestApi().signatureRequestSend(data);
     return {
       success: true,
       signatureRequestId: response.body.signatureRequest?.signatureRequestId,
@@ -92,7 +105,7 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
   };
 
   try {
-    const response = await signatureRequestApi.signatureRequestCreateEmbedded(data);
+    const response = await getSignatureRequestApi().signatureRequestCreateEmbedded(data);
     const signatureRequestId = response.body.signatureRequest?.signatureRequestId;
 
     if (!signatureRequestId) {
@@ -106,7 +119,7 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
     }
 
     // Get the embedded sign URL
-    const embeddedResponse = await embeddedApi.embeddedSignUrl(firstSignature.signatureId);
+    const embeddedResponse = await getEmbeddedApi().embeddedSignUrl(firstSignature.signatureId);
 
     return {
       signatureRequestId,
@@ -123,7 +136,7 @@ export async function createEmbeddedSignatureRequest(params: SignatureRequestPar
  */
 export async function getSignatureRequestStatus(signatureRequestId: string) {
   try {
-    const response = await signatureRequestApi.signatureRequestGet(signatureRequestId);
+    const response = await getSignatureRequestApi().signatureRequestGet(signatureRequestId);
     return {
       success: true,
       signatureRequest: response.body.signatureRequest,
@@ -141,7 +154,7 @@ export async function getSignatureRequestStatus(signatureRequestId: string) {
  */
 export async function cancelSignatureRequest(signatureRequestId: string) {
   try {
-    await signatureRequestApi.signatureRequestCancel(signatureRequestId);
+    await getSignatureRequestApi().signatureRequestCancel(signatureRequestId);
     return { success: true };
   } catch (error) {
     console.error('Error canceling signature request:', error);
@@ -157,7 +170,7 @@ export async function sendReminder(signatureRequestId: string, emailAddress: str
     const data: DropboxSign.SignatureRequestRemindRequest = {
       emailAddress,
     };
-    await signatureRequestApi.signatureRequestRemind(signatureRequestId, data);
+    await getSignatureRequestApi().signatureRequestRemind(signatureRequestId, data);
     return { success: true };
   } catch (error) {
     console.error('Error sending reminder:', error);
@@ -170,7 +183,7 @@ export async function sendReminder(signatureRequestId: string, emailAddress: str
  */
 export async function downloadSignedDocument(signatureRequestId: string) {
   try {
-    const response = await signatureRequestApi.signatureRequestFiles(signatureRequestId, 'pdf');
+    const response = await getSignatureRequestApi().signatureRequestFiles(signatureRequestId, 'pdf');
     return response.body;
   } catch (error) {
     console.error('Error downloading signed document:', error);
@@ -178,4 +191,4 @@ export async function downloadSignedDocument(signatureRequestId: string) {
   }
 }
 
-export { signatureRequestApi, embeddedApi };
+export { getSignatureRequestApi, getEmbeddedApi };
