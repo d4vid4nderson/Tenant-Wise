@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 
-// Lazy-load client to avoid build-time initialization
-let _anthropic: Anthropic | null = null;
+// Dynamic import to avoid build-time initialization
+let _anthropic: any = null;
 
-function getAnthropicClient() {
+async function getAnthropicClient() {
   if (!_anthropic) {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     _anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
@@ -106,7 +106,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Claude API
-    const response = await getAnthropicClient().messages.create({
+    const client = await getAnthropicClient();
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 10000,
       temperature: 1,
@@ -121,8 +122,8 @@ export async function POST(request: NextRequest) {
 
     // Extract text content
     const rawMessage = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
+      .filter((block: { type: string }) => block.type === 'text')
+      .map((block: { text: string }) => block.text)
       .join('\n');
 
     // Clean the response text

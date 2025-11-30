@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import Anthropic from '@anthropic-ai/sdk';
 
-// Lazy-load client to avoid build-time initialization
-let _anthropic: Anthropic | null = null;
+// Dynamic import to avoid build-time initialization
+let _anthropic: any = null;
 
-function getAnthropicClient() {
+async function getAnthropicClient() {
   if (!_anthropic) {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     _anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY,
     });
@@ -137,7 +137,8 @@ export async function POST(request: NextRequest) {
     }));
 
     // Call Claude API
-    const response = await getAnthropicClient().messages.create({
+    const client = await getAnthropicClient();
+    const response = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,
@@ -146,8 +147,8 @@ export async function POST(request: NextRequest) {
 
     // Extract text content from response
     const rawAssistantMessage = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-      .map((block) => block.text)
+      .filter((block: { type: string }) => block.type === 'text')
+      .map((block: { text: string }) => block.text)
       .join('\n');
 
     // Convert any unlinked statute references to clickable links

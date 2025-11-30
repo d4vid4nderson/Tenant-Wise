@@ -1,10 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
+// Dynamic import to avoid build-time initialization
+let _anthropic: any = null;
 
-// Lazy-load client to avoid build-time initialization
-let _anthropic: Anthropic | null = null;
-
-function getAnthropicClient() {
+async function getAnthropicClient() {
   if (!_anthropic) {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     _anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY!,
     });
@@ -13,7 +12,8 @@ function getAnthropicClient() {
 }
 
 export async function generateDocument(systemPrompt: string, userPrompt: string): Promise<string> {
-  const message = await getAnthropicClient().messages.create({
+  const client = await getAnthropicClient();
+  const message = await client.messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2048,
     messages: [
@@ -26,7 +26,7 @@ export async function generateDocument(systemPrompt: string, userPrompt: string)
   });
 
   // Extract text from the response
-  const textBlock = message.content.find((block) => block.type === 'text');
+  const textBlock = message.content.find((block: { type: string }) => block.type === 'text') as { type: string; text: string } | undefined;
   if (!textBlock || textBlock.type !== 'text') {
     throw new Error('No text response from Claude');
   }

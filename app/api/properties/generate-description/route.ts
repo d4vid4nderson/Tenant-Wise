@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@/lib/supabase/server';
 
 interface PropertyDescriptionRequest {
@@ -19,11 +18,12 @@ interface PropertyDescriptionRequest {
   gallery_image_urls?: string[];
 }
 
-// Lazy-load client to avoid build-time initialization
-let _anthropic: Anthropic | null = null;
+// Dynamic import to avoid build-time initialization
+let _anthropic: any = null;
 
-function getAnthropicClient() {
+async function getAnthropicClient() {
   if (!_anthropic) {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
     _anthropic = new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY!,
     });
@@ -134,7 +134,7 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     if (gallery_image_urls) allImageUrls.push(...gallery_image_urls);
 
     // Build the message content
-    const messageContent: Anthropic.MessageParam['content'] = [];
+    const messageContent: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
 
     // Fetch and add images (limit to first 5 to avoid token limits)
     const imagesToProcess = allImageUrls.slice(0, 5);
@@ -164,7 +164,8 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     });
 
     // Generate description using Claude with vision
-    const message = await getAnthropicClient().messages.create({
+    const client = await getAnthropicClient();
+    const message = await client.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: PROPERTY_DESCRIPTION_SYSTEM_PROMPT,
@@ -177,7 +178,7 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     });
 
     // Extract text from the response
-    const textBlock = message.content.find((block) => block.type === 'text');
+    const textBlock = message.content.find((block: { type: string }) => block.type === 'text') as { type: string; text: string } | undefined;
     if (!textBlock || textBlock.type !== 'text') {
       throw new Error('No text response from Claude');
     }
