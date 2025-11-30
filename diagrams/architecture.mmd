@@ -1,0 +1,95 @@
+%%{init: {'theme': 'base', 'themeVariables': { 'primaryColor': '#3b82f6', 'primaryTextColor': '#fff', 'primaryBorderColor': '#2563eb', 'lineColor': '#64748b', 'secondaryColor': '#10b981', 'tertiaryColor': '#f1f5f9'}}}%%
+
+flowchart TB
+    subgraph Client["Frontend (Next.js App Router)"]
+        Landing["Landing Page<br/>(Marketing)"]
+        Auth["Auth Pages<br/>(Login/Signup)"]
+        Dashboard["Dashboard<br/>(Overview)"]
+        DocNew["New Document<br/>(Form)"]
+        DocList["Document List"]
+        DocView["Document View<br/>(Preview/Print)"]
+        Properties["Properties<br/>(CRUD)"]
+        Tenants["Tenants<br/>(CRUD)"]
+        Settings["Settings<br/>(Account/Billing)"]
+    end
+
+    subgraph API["API Routes (Next.js)"]
+        GenAPI["/api/generate<br/>(Claude AI)"]
+        DocsAPI["/api/documents<br/>(CRUD)"]
+        StripeCheckout["/api/stripe/checkout"]
+        StripeWebhook["/api/stripe/webhook"]
+    end
+
+    subgraph External["External Services"]
+        Claude["Claude API<br/>(Anthropic)"]
+        Stripe["Stripe<br/>(Payments)"]
+        Supabase["Supabase<br/>(Database + Auth)"]
+    end
+
+    subgraph Database["Supabase Tables"]
+        Profiles[(profiles)]
+        PropertiesDB[(properties)]
+        TenantsDB[(tenants)]
+        Documents[(documents)]
+    end
+
+    subgraph Prompts["AI Prompts"]
+        LateRent["Late Rent Notice<br/>(TX § 24.005)"]
+        LeaseRenewal["Lease Renewal<br/>Letter"]
+        DepositReturn["Security Deposit<br/>(TX § 92.103)"]
+        Maintenance["Maintenance<br/>Response"]
+        MoveInOut["Move-In/Out<br/>Checklist"]
+    end
+
+    %% User Flow
+    Landing --> Auth
+    Auth --> Dashboard
+    Dashboard --> DocNew
+    Dashboard --> DocList
+    Dashboard --> Properties
+    Dashboard --> Tenants
+    Dashboard --> Settings
+    DocList --> DocView
+    DocNew --> DocView
+
+    %% API Connections
+    DocNew --> GenAPI
+    GenAPI --> Claude
+    GenAPI --> Documents
+    DocList --> DocsAPI
+    DocsAPI --> Documents
+    Settings --> StripeCheckout
+    StripeCheckout --> Stripe
+    Stripe --> StripeWebhook
+    StripeWebhook --> Profiles
+
+    %% Auth Flow
+    Auth --> Supabase
+    Supabase --> Profiles
+
+    %% Database Relationships
+    Profiles --> PropertiesDB
+    Profiles --> TenantsDB
+    Profiles --> Documents
+    PropertiesDB --> TenantsDB
+    TenantsDB --> Documents
+
+    %% Prompt Selection
+    GenAPI --> LateRent
+    GenAPI --> LeaseRenewal
+    GenAPI --> DepositReturn
+    GenAPI --> Maintenance
+    GenAPI --> MoveInOut
+
+    %% Styling
+    classDef frontend fill:#3b82f6,stroke:#2563eb,color:#fff
+    classDef api fill:#8b5cf6,stroke:#7c3aed,color:#fff
+    classDef external fill:#10b981,stroke:#059669,color:#fff
+    classDef database fill:#f59e0b,stroke:#d97706,color:#fff
+    classDef prompt fill:#64748b,stroke:#475569,color:#fff
+
+    class Landing,Auth,Dashboard,DocNew,DocList,DocView,Properties,Tenants,Settings frontend
+    class GenAPI,DocsAPI,StripeCheckout,StripeWebhook api
+    class Claude,Stripe,Supabase external
+    class Profiles,PropertiesDB,TenantsDB,Documents database
+    class LateRent,LeaseRenewal,DepositReturn,Maintenance,MoveInOut prompt

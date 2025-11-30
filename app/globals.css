@@ -1,0 +1,96 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+@source "../**/*.{js,ts,jsx,tsx}";
+
+@theme {
+  --color-primary: #0089eb;
+  --color-primary-foreground: #ffffff;
+  --color-secondary: #64748b;
+  --color-secondary-foreground: #ffffff;
+  --color-accent: #06b6d4;
+  --color-accent-foreground: #ffffff;
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  --color-destructive: #ef4444;
+  --color-destructive-foreground: #ffffff;
+  --color-warning: #f59e0b;
+  --color-warning-foreground: #ffffff;
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #0089eb;
+  --color-background: #ffffff;
+  --color-foreground: #171717;
+  /* Brand gradient colors */
+  --color-brand-cyan: #06b6d4;
+  --color-brand-blue: #3b82f6;
+  --color-brand-indigo: #6366f1;
+  /* Legacy colors */
+  --color-teal: #14b8a6;
+  --color-teal-dark: #0d9488;
+  --color-teal-light: #5eead4;
+  --color-slate: #334155;
+  --color-slate-dark: #1e293b;
+  --color-slate-light: #94a3b8;
+}
+
+/* Brand gradient */
+.brand-gradient {
+  background: linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+}
+
+.brand-gradient-text {
+  background: linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+}
+
+/* Document preview styling */
+.document-preview {
+  font-family: Georgia, 'Times New Roman', serif;
+  line-height: 1.6;
+}
+
+.document-preview h1 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+}
+
+.document-preview h2 {
+  font-size: 1.125rem;
+  font-weight: bold;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.document-preview p {
+  margin-bottom: 1rem;
+  text-align: justify;
+}
+
+.document-preview .signature-line {
+  margin-top: 3rem;
+  border-top: 1px solid #000;
+  width: 50%;
+  padding-top: 0.5rem;
+}
+
+/* Print styles */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  .document-preview {
+    padding: 0;
+    margin: 0;
+  }
+}
