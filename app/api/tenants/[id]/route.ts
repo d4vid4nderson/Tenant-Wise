@@ -46,7 +46,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    return NextResponse.json<ApiResponse<Tenant | TenantWithProperty>>({ success: true, data });
+    return NextResponse.json<ApiResponse<Tenant | TenantWithProperty>>({ success: true, data: data as unknown as Tenant | TenantWithProperty });
   } catch (error) {
     console.error('Error in GET /api/tenants/[id]:', error);
     return NextResponse.json<ApiResponse<null>>(

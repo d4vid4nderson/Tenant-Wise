@@ -5,6 +5,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent } from '@/components/ui/Card';
+import { ConfirmModal } from '@/components/ui/Modal';
 import AddressAutofill from '@/components/AddressAutofill';
 import { FiHome, FiPlus, FiSearch, FiMapPin, FiUsers, FiEdit2, FiTrash2, FiX, FiCheck, FiAlertCircle, FiList, FiMap, FiGrid, FiDollarSign, FiUpload } from 'react-icons/fi';
 
@@ -89,6 +90,12 @@ export default function PropertiesPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ show: boolean; id: string | null; address: string; tenantCount: number }>({
+    show: false,
+    id: null,
+    address: '',
+    tenantCount: 0,
+  });
 
   useEffect(() => {
     loadData();
@@ -228,20 +235,22 @@ export default function PropertiesPage() {
     }
   };
 
-  const handleDeleteProperty = async (id: string) => {
+  const handleDeleteProperty = (id: string) => {
     const property = properties.find(p => p.id === id);
     const tenantCount = getTenantCount(id);
+    setDeleteConfirm({
+      show: true,
+      id,
+      address: property?.address_line1 || '',
+      tenantCount,
+    });
+  };
 
-    const confirmed = window.confirm(
-      tenantCount > 0
-        ? `This property has ${tenantCount} tenant(s). Deleting it will unlink them from this property. Continue?`
-        : `Are you sure you want to delete "${property?.address_line1}"?`
-    );
-
-    if (!confirmed) return;
+  const confirmDeleteProperty = async () => {
+    if (!deleteConfirm.id) return;
 
     try {
-      const response = await fetch(`/api/properties/${id}`, {
+      const response = await fetch(`/api/properties/${deleteConfirm.id}`, {
         method: 'DELETE',
       });
 
@@ -249,10 +258,12 @@ export default function PropertiesPage() {
         throw new Error('Failed to delete property');
       }
 
-      setProperties(properties.filter(p => p.id !== id));
+      setProperties(properties.filter(p => p.id !== deleteConfirm.id));
       showMessage('success', 'Property deleted successfully');
     } catch (error) {
       showMessage('error', 'Failed to delete property');
+    } finally {
+      setDeleteConfirm({ show: false, id: null, address: '', tenantCount: 0 });
     }
   };
 
@@ -746,6 +757,20 @@ export default function PropertiesPage() {
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirm.show}
+        onClose={() => setDeleteConfirm({ show: false, id: null, address: '', tenantCount: 0 })}
+        onConfirm={confirmDeleteProperty}
+        title="Delete Property"
+        message={
+          deleteConfirm.tenantCount > 0
+            ? `This property has ${deleteConfirm.tenantCount} tenant(s). Deleting it will unlink them from this property. Continue?`
+            : `Are you sure you want to delete "${deleteConfirm.address}"?`
+        }
+        confirmText="Delete"
+        variant="danger"
+      />
     </div>
   );
 }

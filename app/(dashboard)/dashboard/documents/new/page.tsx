@@ -111,7 +111,8 @@ function NewDocumentContent() {
     }
   }, [typeParam]);
 
-  const handleGenerate = async (formData: Record<string, unknown>) => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleGenerate = async (formData: Record<string, any>) => {
     if (!selectedType) return;
 
     setLoading(true);
@@ -288,9 +289,9 @@ function NewDocumentContent() {
             {/* Preview */}
             <div className="lg:sticky lg:top-6">
               <DocumentPreview
-                content={generatedDocument?.content || null}
+                content={null}
                 loading={loading}
-                title={generatedDocument?.title}
+                title={undefined}
               />
             </div>
           </div>

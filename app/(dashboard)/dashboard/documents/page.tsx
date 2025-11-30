@@ -12,12 +12,10 @@ import {
   FiFilter,
   FiCalendar,
   FiHome,
-  FiUser,
   FiChevronLeft,
   FiChevronRight,
   FiEye,
   FiTrash2,
-  FiDownload,
   FiClock,
   FiAlertTriangle,
   FiX,
@@ -101,7 +99,7 @@ export default function DocumentsPage() {
 
   useEffect(() => {
     loadData();
-  }, [page, selectedType, selectedProperty, selectedTenant]);
+  }, [page, selectedType, selectedProperty, selectedTenant, searchQuery]);
 
   async function loadData() {
     setLoading(true);
@@ -294,7 +292,10 @@ export default function DocumentsPage() {
                   type="text"
                   placeholder="Search documents..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
                   className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -313,11 +314,22 @@ export default function DocumentsPage() {
                 <span className="w-2 h-2 bg-blue-600 rounded-full" />
               )}
             </button>
+
+            {/* Clear Filters Button - shows when any filter is applied */}
+            {(selectedType || selectedProperty || selectedTenant || searchQuery) && (
+              <button
+                onClick={clearFilters}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <FiX className="w-4 h-4" />
+                Clear Filters
+              </button>
+            )}
           </div>
 
           {/* Expanded Filters */}
           {showFilters && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4 border-t">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4 pt-4">
               <div>
                 <label className="block text-sm font-medium mb-2">Document Type</label>
                 <select
@@ -397,68 +409,53 @@ export default function DocumentsPage() {
           ) : (
             <>
               {/* Table Header */}
-              <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 bg-gray-50 border-b text-sm font-medium text-gray-600">
-                <div className="col-span-4">Document</div>
-                <div className="col-span-2">Type</div>
-                <div className="col-span-2">Property</div>
-                <div className="col-span-2">Tenant</div>
-                <div className="col-span-2 text-right">Actions</div>
+              <div className="hidden md:grid grid-cols-12 gap-6 px-6 py-3 text-sm font-medium text-gray-500">
+                <div className="col-span-6">Document</div>
+                <div className="col-span-3">Type</div>
+                <div className="col-span-2">Date</div>
+                <div className="col-span-1 text-right">Actions</div>
               </div>
 
               {/* Document Rows */}
-              <div className="divide-y">
+              <div className="px-4 pb-4 space-y-3">
                 {documents.map((doc) => (
                   <div
                     key={doc.id}
-                    className="grid grid-cols-1 md:grid-cols-12 gap-4 px-6 py-4 hover:bg-gray-50 transition-colors"
+                    className="grid grid-cols-1 md:grid-cols-12 gap-6 px-5 py-5 bg-gray-50/50 hover:bg-gray-100/70 rounded-xl transition-colors border border-gray-100 items-center"
                   >
                     {/* Document Info */}
-                    <div className="md:col-span-4">
+                    <div className="md:col-span-6">
                       <Link
                         href={`/dashboard/documents/${doc.id}`}
                         className="font-medium text-blue-600 hover:underline block truncate"
                       >
                         {doc.title}
                       </Link>
-                      <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
-                        <FiCalendar className="w-3 h-3" />
-                        {new Date(doc.created_at).toLocaleDateString()}
-                      </div>
+                      {doc.property && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                          <FiHome className="w-3 h-3 flex-shrink-0" />
+                          <span className="truncate">{doc.property.address_line1}</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Type */}
-                    <div className="md:col-span-2">
-                      <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${documentTypeColors[doc.document_type] || documentTypeColors.other}`}>
+                    <div className="md:col-span-3 flex items-center">
+                      <span className={`inline-flex px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${documentTypeColors[doc.document_type] || documentTypeColors.other}`}>
                         {documentTypeLabels[doc.document_type] || doc.document_type}
                       </span>
                     </div>
 
-                    {/* Property */}
-                    <div className="md:col-span-2">
-                      {doc.property ? (
-                        <div className="flex items-center gap-2 text-sm">
-                          <FiHome className="w-3 h-3 text-gray-400" />
-                          <span className="truncate">{doc.property.address_line1}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
-                    </div>
-
-                    {/* Tenant */}
-                    <div className="md:col-span-2">
-                      {doc.tenant ? (
-                        <div className="flex items-center gap-2 text-sm">
-                          <FiUser className="w-3 h-3 text-gray-400" />
-                          <span className="truncate">{doc.tenant.first_name} {doc.tenant.last_name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-sm text-muted-foreground">-</span>
-                      )}
+                    {/* Date */}
+                    <div className="md:col-span-2 flex items-center">
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <FiCalendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        {new Date(doc.created_at).toLocaleDateString()}
+                      </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="md:col-span-2 flex items-center justify-end gap-2">
+                    <div className="md:col-span-1 flex items-center justify-end gap-2">
                       <Link
                         href={`/dashboard/documents/${doc.id}`}
                         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
@@ -480,7 +477,7 @@ export default function DocumentsPage() {
 
               {/* Pagination */}
               {totalPages > 1 && (
-                <div className="flex items-center justify-between px-6 py-4 border-t">
+                <div className="flex items-center justify-between px-6 py-4 mt-4">
                   <p className="text-sm text-muted-foreground">
                     Showing {((page - 1) * pageSize) + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} documents
                   </p>

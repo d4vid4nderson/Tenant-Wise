@@ -6,12 +6,13 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   FiArrowLeft,
   FiFileText,
   FiPrinter,
   FiDownload,
-  FiEdit2,
+  FiRefreshCw,
   FiTrash2,
   FiCalendar,
   FiHome,
@@ -19,6 +20,12 @@ import {
   FiMapPin,
   FiCopy,
   FiCheck,
+  FiSend,
+  FiEdit3,
+  FiClock,
+  FiX,
+  FiCheckCircle,
+  FiAlertCircle,
 } from 'react-icons/fi';
 
 interface Document {
@@ -31,6 +38,15 @@ interface Document {
   tenant_id: string | null;
   state: string;
   created_at: string;
+  signature_request_id: string | null;
+  signature_status: string | null;
+}
+
+interface SignatureInfo {
+  signerEmail: string;
+  signerName: string;
+  status: string;
+  signedAt: string | null;
 }
 
 interface Property {
@@ -79,6 +95,13 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+
+  // Signature state
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [sendingSignature, setSendingSignature] = useState(false);
+  const [signatureMessage, setSignatureMessage] = useState('');
+  const [signatures, setSignatures] = useState<SignatureInfo[]>([]);
 
   useEffect(() => {
     loadDocument();
@@ -171,6 +194,132 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
     window.document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  const handleRegenerate = async () => {
+    if (!document) return;
+
+    setRegenerating(true);
+    try {
+      const response = await fetch(`/api/documents/${document.id}/regenerate`, {
+        method: 'POST',
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        // Update the document state with new content
+        setDocument(prev => prev ? { ...prev, content: data.document.content } : null);
+      } else {
+        const error = await response.json();
+        console.error('Regeneration failed:', error);
+      }
+    } catch (error) {
+      console.error('Error regenerating document:', error);
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // Load signature status
+  const loadSignatureStatus = async () => {
+    if (!document?.signature_request_id) return;
+
+    try {
+      const response = await fetch(`/api/documents/${document.id}/signature`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.signatures) {
+          setSignatures(data.signatures);
+        }
+        // Update local document status
+        if (data.status && data.status !== document.signature_status) {
+          setDocument(prev => prev ? { ...prev, signature_status: data.status } : null);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading signature status:', error);
+    }
+  };
+
+  // Send document for signature
+  const handleSendForSignature = async () => {
+    if (!document || !tenant?.email) return;
+
+    setSendingSignature(true);
+    try {
+      const response = await fetch(`/api/documents/${document.id}/signature`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: signatureMessage }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDocument(prev => prev ? {
+          ...prev,
+          signature_request_id: data.signatureRequestId,
+          signature_status: 'pending',
+        } : null);
+        setShowSignatureModal(false);
+        setSignatureMessage('');
+      } else {
+        const error = await response.json();
+        console.error('Error sending for signature:', error);
+      }
+    } catch (error) {
+      console.error('Error sending for signature:', error);
+    } finally {
+      setSendingSignature(false);
+    }
+  };
+
+  // Cancel signature request
+  const handleCancelSignature = async () => {
+    if (!document?.signature_request_id) return;
+
+    try {
+      const response = await fetch(`/api/documents/${document.id}/signature`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setDocument(prev => prev ? {
+          ...prev,
+          signature_request_id: null,
+          signature_status: 'cancelled',
+        } : null);
+        setSignatures([]);
+      }
+    } catch (error) {
+      console.error('Error cancelling signature:', error);
+    }
+  };
+
+  // Get signature status display info
+  const getSignatureStatusInfo = (status: string | null) => {
+    switch (status) {
+      case 'pending':
+        return { label: 'Awaiting Signatures', color: 'bg-yellow-100 text-yellow-700', icon: FiClock };
+      case 'partially_signed':
+        return { label: 'Partially Signed', color: 'bg-blue-100 text-blue-700', icon: FiEdit3 };
+      case 'completed':
+        return { label: 'Fully Signed', color: 'bg-green-100 text-green-700', icon: FiCheckCircle };
+      case 'declined':
+        return { label: 'Declined', color: 'bg-red-100 text-red-700', icon: FiX };
+      case 'cancelled':
+        return { label: 'Cancelled', color: 'bg-gray-100 text-gray-700', icon: FiX };
+      case 'expired':
+        return { label: 'Expired', color: 'bg-orange-100 text-orange-700', icon: FiAlertCircle };
+      default:
+        return { label: 'Not Sent', color: 'bg-gray-100 text-gray-600', icon: FiSend };
+    }
+  };
+
+  // Load signature status when document has a signature request
+  useEffect(() => {
+    if (document?.signature_request_id) {
+      loadSignatureStatus();
+    }
+  }, [document?.signature_request_id]);
 
   if (loading) {
     return (
@@ -266,9 +415,17 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
         {/* Document Content */}
         <div className="lg:col-span-3">
           <Card>
-            <CardContent className="p-8">
-              <div className="document-preview prose prose-sm max-w-none">
-                <ReactMarkdown>{document.content}</ReactMarkdown>
+            <CardContent className="p-8 relative">
+              {regenerating && (
+                <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-lg">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    <p className="text-sm text-muted-foreground">Regenerating document...</p>
+                  </div>
+                </div>
+              )}
+              <div className="document-preview prose prose-sm max-w-none prose-table:border-collapse prose-th:border prose-th:border-gray-300 prose-th:bg-gray-50 prose-th:p-2 prose-td:border prose-td:border-gray-300 prose-td:p-2">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{document.content}</ReactMarkdown>
               </div>
             </CardContent>
           </Card>
@@ -352,19 +509,98 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
             </CardContent>
           </Card>
 
+          {/* E-Signature Status */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FiEdit3 className="w-4 h-4 text-blue-600" />
+                E-Signature
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const statusInfo = getSignatureStatusInfo(document.signature_status);
+                const StatusIcon = statusInfo.icon;
+                return (
+                  <div className="space-y-3">
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${statusInfo.color}`}>
+                      <StatusIcon className="w-4 h-4" />
+                      <span className="text-sm font-medium">{statusInfo.label}</span>
+                    </div>
+
+                    {/* Signature progress */}
+                    {signatures.length > 0 && (
+                      <div className="space-y-2">
+                        {signatures.map((sig, index) => (
+                          <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded-lg text-sm">
+                            <div>
+                              <p className="font-medium">{sig.signerName}</p>
+                              <p className="text-xs text-muted-foreground">{sig.signerEmail}</p>
+                            </div>
+                            <span className={`text-xs font-medium ${
+                              sig.status === 'signed' ? 'text-green-600' : 'text-yellow-600'
+                            }`}>
+                              {sig.status === 'signed' ? 'Signed' : 'Pending'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Actions based on status */}
+                    {!document.signature_request_id ? (
+                      <button
+                        onClick={() => setShowSignatureModal(true)}
+                        disabled={!tenant?.email}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:from-cyan-600 hover:to-blue-600 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <FiSend className="w-4 h-4" />
+                        Send for Signature
+                      </button>
+                    ) : document.signature_status === 'pending' || document.signature_status === 'partially_signed' ? (
+                      <button
+                        onClick={handleCancelSignature}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm"
+                      >
+                        <FiX className="w-4 h-4" />
+                        Cancel Request
+                      </button>
+                    ) : null}
+
+                    {!tenant?.email && !document.signature_request_id && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        Tenant email required for e-signature
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
           {/* Actions */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Actions</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              <Link
-                href={`/dashboard/documents/new?regenerate=${document.id}`}
-                className="flex items-center gap-2 w-full px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm"
+              <button
+                onClick={handleRegenerate}
+                disabled={regenerating || !document.form_data}
+                className="flex items-center gap-2 w-full px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <FiEdit2 className="w-4 h-4" />
-                Regenerate Document
-              </Link>
+                {regenerating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                    Regenerating...
+                  </>
+                ) : (
+                  <>
+                    <FiRefreshCw className="w-4 h-4" />
+                    Regenerate Document
+                  </>
+                )}
+              </button>
               <button
                 onClick={() => setShowDeleteConfirm(true)}
                 className="flex items-center gap-2 w-full px-4 py-2 border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm"
@@ -400,6 +636,76 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
                   className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
                 >
                   Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send for Signature Modal */}
+      {showSignatureModal && tenant && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 no-print">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden">
+            <div className="bg-gradient-to-r from-cyan-500 to-blue-500 px-6 py-4">
+              <h2 className="text-lg font-semibold text-white">Send for E-Signature</h2>
+            </div>
+            <div className="p-6">
+              <div className="space-y-4">
+                <div>
+                  <p className="text-sm text-muted-foreground mb-2">This document will be sent to:</p>
+                  <div className="p-3 bg-gray-50 rounded-lg">
+                    <p className="font-medium">{tenant.first_name} {tenant.last_name}</p>
+                    <p className="text-sm text-muted-foreground">{tenant.email}</p>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">
+                    Personal Message (optional)
+                  </label>
+                  <textarea
+                    value={signatureMessage}
+                    onChange={(e) => setSignatureMessage(e.target.value)}
+                    placeholder="Add a personal message to include with the signature request..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                    rows={3}
+                  />
+                </div>
+
+                <div className="p-3 bg-blue-50 rounded-lg">
+                  <p className="text-sm text-blue-700">
+                    <strong>Note:</strong> Both you and the tenant will receive an email with a link to sign this document via Dropbox Sign.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => {
+                    setShowSignatureModal(false);
+                    setSignatureMessage('');
+                  }}
+                  className="px-4 py-2 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSendForSignature}
+                  disabled={sendingSignature}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-white rounded-lg hover:from-cyan-600 hover:to-blue-600 disabled:opacity-50"
+                >
+                  {sendingSignature ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <FiSend className="w-4 h-4" />
+                      Send for Signature
+                    </>
+                  )}
                 </button>
               </div>
             </div>

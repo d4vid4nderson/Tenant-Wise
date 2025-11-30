@@ -60,7 +60,7 @@ export async function GET(request: NextRequest) {
     }
 
     const response: PaginatedResponse<Tenant | TenantWithProperty> = {
-      data: data || [],
+      data: (data as unknown as (Tenant | TenantWithProperty)[]) || [],
       count: count || 0,
       page,
       pageSize,
@@ -147,6 +147,23 @@ export async function POST(request: NextRequest) {
       security_deposit: security_deposit || null,
       status,
       notes: notes || null,
+      // Screening/Approval fields - set from body or default to null
+      date_of_birth: body.date_of_birth || null,
+      ssn_last_four: body.ssn_last_four || null,
+      drivers_license: body.drivers_license || null,
+      current_employer: body.current_employer || null,
+      employer_phone: body.employer_phone || null,
+      annual_income: body.annual_income || null,
+      previous_address: body.previous_address || null,
+      previous_landlord_name: body.previous_landlord_name || null,
+      previous_landlord_phone: body.previous_landlord_phone || null,
+      move_in_date: body.move_in_date || null,
+      application_status: body.application_status || null,
+      emergency_contact_name: body.emergency_contact_name || null,
+      emergency_contact_phone: body.emergency_contact_phone || null,
+      number_of_occupants: body.number_of_occupants || null,
+      has_pets: body.has_pets || false,
+      pets: body.pets || null,
     };
 
     const { data, error } = await supabase

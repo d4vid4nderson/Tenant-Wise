@@ -103,6 +103,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
     const loadMap = async () => {
       const mapboxgl = (await import('mapbox-gl')).default;
+      // @ts-expect-error mapbox-gl CSS has no type declarations
       await import('mapbox-gl/dist/mapbox-gl.css');
 
       mapboxgl.accessToken = MAPBOX_TOKEN;

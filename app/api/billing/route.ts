@@ -74,8 +74,8 @@ export async function GET(request: NextRequest) {
         amount: inv.amount_paid,
         currency: inv.currency,
         created: inv.created,
-        pdfUrl: inv.invoice_pdf,
-        hostedUrl: inv.hosted_invoice_url,
+        pdfUrl: inv.invoice_pdf ?? null,
+        hostedUrl: inv.hosted_invoice_url ?? null,
       }));
     } catch (err) {
       console.error('Error fetching invoices:', err);

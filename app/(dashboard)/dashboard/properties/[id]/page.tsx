@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
-import { Modal } from '@/components/ui/Modal';
+import { Modal, ConfirmModal } from '@/components/ui/Modal';
 import { FiHome, FiArrowLeft, FiMapPin, FiUsers, FiFileText, FiEdit2, FiTrash2, FiSave, FiX, FiCheck, FiAlertCircle, FiPlus, FiCalendar, FiDollarSign, FiUpload, FiImage, FiRefreshCw, FiStar, FiChevronLeft, FiChevronRight, FiAlignLeft, FiZap, FiUserPlus, FiUserMinus } from 'react-icons/fi';
 import RentComparisonChart from '@/components/RentComparisonChart';
 import { RichTextEditor, RichTextDisplay } from '@/components/ui/RichTextEditor';
@@ -141,6 +141,9 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [pendingUploads, setPendingUploads] = useState<{ file: File; preview: string; caption: string }[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+
+  // Delete confirmation modal state
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Status change modal state
   const [showRemoveTenantModal, setShowRemoveTenantModal] = useState(false);
@@ -652,15 +655,11 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     }
   };
 
-  const handleDelete = async () => {
-    const confirmed = window.confirm(
-      tenants.length > 0
-        ? `This property has ${tenants.length} tenant(s). Deleting it will unlink them from this property. Continue?`
-        : 'Are you sure you want to delete this property?'
-    );
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
 
-    if (!confirmed) return;
-
+  const confirmDelete = async () => {
     try {
       const response = await fetch(`/api/properties/${id}`, {
         method: 'DELETE',
@@ -1651,6 +1650,21 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           </div>
         </div>
       </Modal>
+
+      {/* Delete Property Confirmation Modal */}
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={confirmDelete}
+        title="Delete Property"
+        message={
+          tenants.length > 0
+            ? `This property has ${tenants.length} tenant(s). Deleting it will unlink them from this property. Are you sure you want to continue?`
+            : 'Are you sure you want to delete this property? This action cannot be undone.'
+        }
+        confirmText="Delete Property"
+        variant="danger"
+      />
     </div>
   );
 }
