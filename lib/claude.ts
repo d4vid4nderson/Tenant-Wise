@@ -1,11 +1,19 @@
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+// Lazy-load client to avoid build-time initialization
+let _anthropic: Anthropic | null = null;
+
+function getAnthropicClient() {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return _anthropic;
+}
 
 export async function generateDocument(systemPrompt: string, userPrompt: string): Promise<string> {
-  const message = await anthropic.messages.create({
+  const message = await getAnthropicClient().messages.create({
     model: 'claude-sonnet-4-20250514',
     max_tokens: 2048,
     messages: [

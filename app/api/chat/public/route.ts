@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load client to avoid build-time initialization
+let _anthropic: Anthropic | null = null;
+
+function getAnthropicClient() {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return _anthropic;
+}
 
 const SYSTEM_PROMPT = `You're a helpful web agent that likes to help users understand the app TenantWise. You're eager to help and provide as much information to them without being too overbearing.
 
@@ -98,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Claude API
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 10000,
       temperature: 1,

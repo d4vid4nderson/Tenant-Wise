@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import Anthropic from '@anthropic-ai/sdk';
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+// Lazy-load client to avoid build-time initialization
+let _anthropic: Anthropic | null = null;
+
+function getAnthropicClient() {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    });
+  }
+  return _anthropic;
+}
 
 const SYSTEM_PROMPT = `You are a knowledgeable legal assistant specializing in Texas landlord-tenant law. Your role is to help landlords understand their rights, responsibilities, and legal requirements under the Texas Property Code.
 
@@ -129,7 +137,7 @@ export async function POST(request: NextRequest) {
     }));
 
     // Call Claude API
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: SYSTEM_PROMPT,

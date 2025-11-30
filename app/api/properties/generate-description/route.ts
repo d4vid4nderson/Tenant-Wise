@@ -19,9 +19,17 @@ interface PropertyDescriptionRequest {
   gallery_image_urls?: string[];
 }
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+// Lazy-load client to avoid build-time initialization
+let _anthropic: Anthropic | null = null;
+
+function getAnthropicClient() {
+  if (!_anthropic) {
+    _anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return _anthropic;
+}
 
 const PROPERTY_DESCRIPTION_SYSTEM_PROMPT = `You are a professional real estate copywriter specializing in rental property listings.
 Your role is to create compelling, informative property descriptions for landlords.
@@ -156,7 +164,7 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     });
 
     // Generate description using Claude with vision
-    const message = await anthropic.messages.create({
+    const message = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: PROPERTY_DESCRIPTION_SYSTEM_PROMPT,
