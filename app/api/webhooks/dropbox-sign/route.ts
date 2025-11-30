@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import crypto from 'crypto';
 
-// Use service role for webhook processing (no user context)
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-load Supabase client to avoid build-time initialization
+let _supabase: SupabaseClient | null = null;
+
+function getSupabase() {
+  if (!_supabase) {
+    _supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return _supabase;
+}
 
 interface DropboxSignEvent {
   event: {
@@ -79,7 +86,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Find the document with this signature request
-    const { data: document, error: findError } = await supabase
+    const { data: document, error: findError } = await getSupabase()
       .from('documents')
       .select('id, user_id')
       .eq('signature_request_id', signatureRequestId)
@@ -135,7 +142,7 @@ export async function POST(request: NextRequest) {
 
     // Update the document status if we have a new status
     if (newStatus) {
-      await supabase
+      await getSupabase()
         .from('documents')
         .update({ signature_status: newStatus })
         .eq('id', document.id);
