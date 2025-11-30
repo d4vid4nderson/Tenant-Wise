@@ -1,17 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-// Dynamic import to avoid build-time initialization
-let _anthropic: any = null;
+// Direct REST API call to avoid SDK build-time initialization issues
+interface ClaudeResponse {
+  content: Array<{ type: string; text?: string }>;
+  usage: { input_tokens: number; output_tokens: number };
+}
 
-async function getAnthropicClient() {
-  if (!_anthropic) {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    _anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+async function callClaudeAPI(
+  messages: Array<{ role: 'user' | 'assistant'; content: string }>,
+  systemPrompt: string,
+  maxTokens: number = 1024
+): Promise<ClaudeResponse> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  return _anthropic;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${error}`);
+  }
+
+  return response.json();
 }
 
 const SYSTEM_PROMPT = `You are a knowledgeable legal assistant specializing in Texas landlord-tenant law. Your role is to help landlords understand their rights, responsibilities, and legal requirements under the Texas Property Code.
@@ -137,18 +163,12 @@ export async function POST(request: NextRequest) {
     }));
 
     // Call Claude API
-    const client = await getAnthropicClient();
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: SYSTEM_PROMPT,
-      messages: formattedMessages,
-    });
+    const response = await callClaudeAPI(formattedMessages, SYSTEM_PROMPT);
 
     // Extract text content from response
     const rawAssistantMessage = response.content
-      .filter((block: { type: string }) => block.type === 'text')
-      .map((block: { text: string }) => block.text)
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text || '')
       .join('\n');
 
     // Convert any unlinked statute references to clickable links

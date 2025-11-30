@@ -18,17 +18,46 @@ interface PropertyDescriptionRequest {
   gallery_image_urls?: string[];
 }
 
-// Dynamic import to avoid build-time initialization
-let _anthropic: any = null;
+// Direct REST API call to avoid SDK build-time initialization issues
+interface ClaudeResponse {
+  content: Array<{ type: string; text?: string }>;
+}
 
-async function getAnthropicClient() {
-  if (!_anthropic) {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    _anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY!,
-    });
+type MessageContent = Array<
+  | { type: 'text'; text: string }
+  | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
+>;
+
+async function callClaudeAPIWithVision(
+  content: MessageContent,
+  systemPrompt: string
+): Promise<ClaudeResponse> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  return _anthropic;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 1024,
+      system: systemPrompt,
+      messages: [{ role: 'user', content }],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${error}`);
+  }
+
+  return response.json();
 }
 
 const PROPERTY_DESCRIPTION_SYSTEM_PROMPT = `You are a professional real estate copywriter specializing in rental property listings.
@@ -134,7 +163,7 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     if (gallery_image_urls) allImageUrls.push(...gallery_image_urls);
 
     // Build the message content
-    const messageContent: Array<{ type: string; text?: string; source?: { type: string; media_type: string; data: string } }> = [];
+    const messageContent: MessageContent = [];
 
     // Fetch and add images (limit to first 5 to avoid token limits)
     const imagesToProcess = allImageUrls.slice(0, 5);
@@ -149,7 +178,7 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
             type: 'image',
             source: {
               type: 'base64',
-              media_type: result.mediaType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              media_type: result.mediaType,
               data: result.base64,
             },
           });
@@ -164,22 +193,11 @@ Location: ${address_line1}${address_line2 ? `, ${address_line2}` : ''}, ${city},
     });
 
     // Generate description using Claude with vision
-    const client = await getAnthropicClient();
-    const message = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: PROPERTY_DESCRIPTION_SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: messageContent,
-        },
-      ],
-    });
+    const message = await callClaudeAPIWithVision(messageContent, PROPERTY_DESCRIPTION_SYSTEM_PROMPT);
 
     // Extract text from the response
-    const textBlock = message.content.find((block: { type: string }) => block.type === 'text') as { type: string; text: string } | undefined;
-    if (!textBlock || textBlock.type !== 'text') {
+    const textBlock = message.content.find((block) => block.type === 'text');
+    if (!textBlock || !textBlock.text) {
       throw new Error('No text response from Claude');
     }
 

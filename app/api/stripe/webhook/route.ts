@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { headers } from 'next/headers';
 import { stripe, constructWebhookEvent } from '@/lib/stripe';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-// Use service role client for webhook (no user context)
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-load Supabase admin client to avoid build-time initialization
+let _supabaseAdmin: SupabaseClient | null = null;
+
+function getSupabaseAdmin(): SupabaseClient {
+  if (!_supabaseAdmin) {
+    _supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+      process.env.SUPABASE_SERVICE_ROLE_KEY || 'placeholder-key'
+    );
+  }
+  return _supabaseAdmin;
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.text();
@@ -122,7 +129,7 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   }
 
   // Update profile with subscription ID
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('profiles')
     .update({
       subscription_tier: plan,
@@ -138,7 +145,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
 
   // Get user by Stripe customer ID
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('id')
     .eq('stripe_customer_id', customerId)
@@ -174,7 +181,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   const status = statusMap[subscription.status] || 'active';
 
   // Update profile
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('profiles')
     .update({
       subscription_tier: tier,
@@ -184,7 +191,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
     .eq('id', profile.id);
 
   // Update or create subscription record
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('subscriptions')
     .upsert({
       user_id: profile.id,
@@ -211,7 +218,7 @@ async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
   const customerId = subscription.customer as string;
 
   // Get user by Stripe customer ID
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('id')
     .eq('stripe_customer_id', customerId)
@@ -223,7 +230,7 @@ async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
   }
 
   // Downgrade to free tier
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('profiles')
     .update({
       subscription_tier: 'free',
@@ -233,7 +240,7 @@ async function handleSubscriptionCanceled(subscription: Stripe.Subscription) {
     .eq('id', profile.id);
 
   // Update subscription record
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('subscriptions')
     .update({
       status: 'canceled',
@@ -249,7 +256,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   // Get user by Stripe customer ID
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('id')
     .eq('stripe_customer_id', customerId)
@@ -258,7 +265,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice) {
   if (!profile) return;
 
   // Record payment
-  await supabaseAdmin.from('payments').insert({
+  await getSupabaseAdmin().from('payments').insert({
     user_id: profile.id,
     subscription_id: invoice.subscription as string,
     amount: invoice.amount_paid / 100, // Convert cents to dollars
@@ -276,7 +283,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   // Get user by Stripe customer ID
-  const { data: profile } = await supabaseAdmin
+  const { data: profile } = await getSupabaseAdmin()
     .from('profiles')
     .select('id')
     .eq('stripe_customer_id', customerId)
@@ -285,7 +292,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   if (!profile) return;
 
   // Record failed payment
-  await supabaseAdmin.from('payments').insert({
+  await getSupabaseAdmin().from('payments').insert({
     user_id: profile.id,
     subscription_id: invoice.subscription as string,
     amount: invoice.amount_due / 100,
@@ -296,7 +303,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   });
 
   // Update subscription status
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('profiles')
     .update({ updated_at: new Date().toISOString() })
     .eq('id', profile.id);
@@ -308,7 +315,7 @@ async function handleRentPaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
   const { landlordId, tenantId, propertyId } = paymentIntent.metadata;
 
   // Update rent payment record
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('rent_payments')
     .update({
       status: 'succeeded',
@@ -325,7 +332,7 @@ async function handleRentPaymentFailed(paymentIntent: Stripe.PaymentIntent) {
   const failureMessage =
     paymentIntent.last_payment_error?.message || 'Payment failed';
 
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('rent_payments')
     .update({
       status: 'failed',
@@ -339,7 +346,7 @@ async function handleRentPaymentFailed(paymentIntent: Stripe.PaymentIntent) {
 
 async function handleConnectedAccountUpdate(account: Stripe.Account) {
   // Update connected account record
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('connected_accounts')
     .update({
       account_status: account.charges_enabled ? 'active' : 'pending',
@@ -352,7 +359,7 @@ async function handleConnectedAccountUpdate(account: Stripe.Account) {
     .eq('stripe_account_id', account.id);
 
   // Also update the profile
-  await supabaseAdmin
+  await getSupabaseAdmin()
     .from('profiles')
     .update({
       stripe_connected_account_id: account.id,

@@ -1,16 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Dynamic import to avoid build-time initialization
-let _anthropic: any = null;
+// Direct REST API call to avoid SDK build-time initialization issues
+interface ClaudeResponse {
+  content: Array<{ type: string; text?: string }>;
+}
 
-async function getAnthropicClient() {
-  if (!_anthropic) {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    _anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-    });
+async function callClaudeAPI(
+  message: string,
+  systemPrompt: string
+): Promise<ClaudeResponse> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  return _anthropic;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5-20250929',
+      max_tokens: 10000,
+      temperature: 1,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: message }],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${error}`);
+  }
+
+  return response.json();
 }
 
 const SYSTEM_PROMPT = `You're a helpful web agent that likes to help users understand the app TenantWise. You're eager to help and provide as much information to them without being too overbearing.
@@ -106,24 +131,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Call Claude API
-    const client = await getAnthropicClient();
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
-      max_tokens: 10000,
-      temperature: 1,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: message,
-        },
-      ],
-    });
+    const response = await callClaudeAPI(message, SYSTEM_PROMPT);
 
     // Extract text content
     const rawMessage = response.content
-      .filter((block: { type: string }) => block.type === 'text')
-      .map((block: { text: string }) => block.text)
+      .filter((block) => block.type === 'text')
+      .map((block) => block.text || '')
       .join('\n');
 
     // Clean the response text

@@ -1,33 +1,56 @@
-// Dynamic import to avoid build-time initialization
-let _anthropic: any = null;
+// Use direct REST API calls to avoid SDK build-time initialization issues
+interface ClaudeMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
 
-async function getAnthropicClient() {
-  if (!_anthropic) {
-    const Anthropic = (await import('@anthropic-ai/sdk')).default;
-    _anthropic = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY!,
-    });
+interface ClaudeResponse {
+  content: Array<{ type: string; text?: string }>;
+}
+
+async function callClaudeAPI(
+  messages: ClaudeMessage[],
+  systemPrompt: string,
+  maxTokens: number = 2048,
+  model: string = 'claude-sonnet-4-20250514'
+): Promise<ClaudeResponse> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY is not set');
   }
-  return _anthropic;
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      system: systemPrompt,
+      messages,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Claude API error: ${response.status} - ${error}`);
+  }
+
+  return response.json();
 }
 
 export async function generateDocument(systemPrompt: string, userPrompt: string): Promise<string> {
-  const client = await getAnthropicClient();
-  const message = await client.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2048,
-    messages: [
-      {
-        role: 'user',
-        content: userPrompt,
-      },
-    ],
-    system: systemPrompt,
-  });
+  const message = await callClaudeAPI(
+    [{ role: 'user', content: userPrompt }],
+    systemPrompt
+  );
 
   // Extract text from the response
-  const textBlock = message.content.find((block: { type: string }) => block.type === 'text') as { type: string; text: string } | undefined;
-  if (!textBlock || textBlock.type !== 'text') {
+  const textBlock = message.content.find((block) => block.type === 'text');
+  if (!textBlock || !textBlock.text) {
     throw new Error('No text response from Claude');
   }
 
