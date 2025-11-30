@@ -117,12 +117,18 @@ export async function POST(request: NextRequest) {
       zip,
       unit_count: unit_count || 1,
       property_type: property_type || null,
+      status: body.status || null,
       notes: notes || null,
+      description: body.description || null,
       latitude: latitude || null,
       longitude: longitude || null,
       monthly_rent: monthly_rent || null,
       market_rent: market_rent || null,
       image_url: image_url || null,
+      bedrooms: body.bedrooms || null,
+      bathrooms: body.bathrooms || null,
+      sqft: body.sqft || null,
+      rent_due_day: body.rent_due_day || null,
     };
 
     const { data, error } = await supabase

@@ -535,7 +535,7 @@ export function MaintenanceResponseForm({ onGenerate, loading }: MaintenanceResp
                 type="number"
                 step="0.01"
                 value={formData.estimatedCost || ''}
-                onChange={(e) => handleChange('estimatedCost', parseFloat(e.target.value) || undefined)}
+                onChange={(e) => handleChange('estimatedCost', parseFloat(e.target.value) || 0)}
                 placeholder="150.00"
               />
             </div>

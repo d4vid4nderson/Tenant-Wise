@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
-import { FiHome, FiUsers, FiSettings, FiLogOut, FiPlus, FiFileText, FiMessageCircle, FiTool } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiLogOut, FiFileText, FiMessageCircle, FiTool } from 'react-icons/fi';
 
 export default async function DashboardLayout({
   children,
@@ -31,39 +31,41 @@ export default async function DashboardLayout({
           <SidebarLink href="/dashboard/tenants" icon={<FiUsers />}>Tenants</SidebarLink>
           <SidebarLink href="/dashboard/contractors" icon={<FiTool />}>Contractors</SidebarLink>
           <SidebarLink href="/chat" icon={<FiMessageCircle />}>Legal Assistant</SidebarLink>
-
-          <div className="pt-4">
-            <Link
-              href="/dashboard/documents/new"
-              className="flex items-center gap-2 w-full px-4 py-2 bg-primary text-white rounded-lg hover:bg-blue-600 transition-colors"
-            >
-              <FiPlus className="w-5 h-5" />
-              New Document
-            </Link>
-          </div>
         </nav>
 
         {/* Bottom section */}
         <div className="pt-4 border-t border-border">
-          {/* User info */}
-          <div className="flex items-center gap-3 px-4 py-3 mb-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-r from-cyan-500 to-blue-500 flex items-center justify-center text-white text-sm font-medium">
-              {user.email?.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-foreground truncate">{user.email}</p>
-            </div>
-          </div>
-
           {/* Settings & Sign Out */}
           <div className="space-y-1">
             <SidebarLink href="/dashboard/settings" icon={<FiSettings />}>Settings</SidebarLink>
-            <form action="/api/auth/signout" method="POST">
-              <button type="submit" className="flex items-center gap-3 px-4 py-2 w-full text-secondary hover:text-foreground hover:bg-muted rounded-lg transition-colors">
-                <FiLogOut className="w-4 h-4" />
-                Sign Out
-              </button>
-            </form>
+            <Link
+              href="/signout"
+              className="flex items-center gap-3 px-4 py-2 w-full text-secondary hover:text-foreground hover:bg-muted rounded-lg transition-colors"
+            >
+              <FiLogOut className="w-4 h-4" />
+              Sign Out
+            </Link>
+          </div>
+
+          {/* Footer Links */}
+          <div className="mt-4 pt-4 border-t border-border px-4 space-y-2">
+            <Link href="/privacy" className="block text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Privacy Policy
+            </Link>
+            <Link href="/terms" className="block text-sm text-muted-foreground hover:text-foreground transition-colors">
+              Terms of Service
+            </Link>
+            <p className="text-xs text-muted-foreground pt-2">
+              © {new Date().getFullYear()} Tenant Wise
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Documents are templates only. Consult an attorney for legal advice.
+            </p>
+            <div className="pt-2 border-t border-border mt-2">
+              <p className="text-xs text-muted-foreground">
+                Made in Texas with <span className="text-red-500">❤</span>
+              </p>
+            </div>
           </div>
         </div>
       </aside>
