@@ -57,7 +57,9 @@ export default async function DashboardPage() {
     .eq('status', 'active');
 
   // Fetch late rent documents for current month to track status
-  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  // Use Central Time for consistent behavior across environments
+  const nowCentral = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  const startOfMonth = new Date(nowCentral.getFullYear(), nowCentral.getMonth(), 1).toISOString();
   const { data: lateRentDocs } = await supabase
     .from('documents')
     .select('id, title, tenant_id, signature_request_id, signature_status, created_at')
@@ -98,8 +100,8 @@ export default async function DashboardPage() {
     }
   });
 
-  // Calculate upcoming items - use Central Time (Texas) for consistent behavior
-  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
+  // Calculate upcoming items - reuse Central Time date from above
+  const today = nowCentral;
   const currentDay = today.getDate();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
