@@ -19,6 +19,9 @@ import {
   FiClock,
   FiAlertTriangle,
   FiX,
+  FiSend,
+  FiCheck,
+  FiEdit3,
 } from 'react-icons/fi';
 
 interface Document {
@@ -30,6 +33,8 @@ interface Document {
   tenant_id: string | null;
   state: string;
   created_at: string;
+  signature_request_id: string | null;
+  signature_status: string | null;
   property?: {
     address_line1: string;
     city: string;
@@ -69,6 +74,29 @@ const documentTypeColors: Record<string, string> = {
   deposit_return: 'bg-purple-100 text-purple-700',
   other: 'bg-gray-100 text-gray-700',
 };
+
+const signatureStatusConfig: Record<string, { label: string; color: string }> = {
+  pending: { label: 'Sent', color: 'bg-amber-100 text-amber-700' },
+  viewed: { label: 'Viewed', color: 'bg-blue-100 text-blue-700' },
+  partially_signed: { label: 'Partially Signed', color: 'bg-cyan-100 text-cyan-700' },
+  completed: { label: 'Signed', color: 'bg-green-100 text-green-700' },
+  declined: { label: 'Declined', color: 'bg-red-100 text-red-700' },
+  expired: { label: 'Expired', color: 'bg-gray-100 text-gray-700' },
+  cancelled: { label: 'Cancelled', color: 'bg-gray-100 text-gray-700' },
+};
+
+function SignatureStatusIcon({ status }: { status: string }) {
+  switch (status) {
+    case 'pending': return <FiSend className="w-3 h-3" />;
+    case 'viewed': return <FiEye className="w-3 h-3" />;
+    case 'partially_signed': return <FiEdit3 className="w-3 h-3" />;
+    case 'completed': return <FiCheck className="w-3 h-3" />;
+    case 'declined': return <FiX className="w-3 h-3" />;
+    case 'expired': return <FiClock className="w-3 h-3" />;
+    case 'cancelled': return <FiX className="w-3 h-3" />;
+    default: return null;
+  }
+}
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -220,60 +248,63 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 -mt-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FiFileText className="w-5 h-5 text-blue-600" />
+      {/* Stats Cards - Compact style matching dashboard */}
+      <div className="grid grid-cols-4 gap-3 mb-6 -mt-6">
+        <Card className="!border-blue-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-50 rounded">
+                <FiFileText className="w-4 h-4 text-blue-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{totalCount}</p>
-                <p className="text-sm text-muted-foreground">Total Documents</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <FiClock className="w-5 h-5 text-green-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">{thisMonthDocs}</p>
-                <p className="text-sm text-muted-foreground">This Month</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-blue-600">{totalCount}</p>
+                <p className="text-xs text-muted-foreground">Documents</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
-                <FiFileText className="w-5 h-5 text-red-600" />
+
+        <Card className="!border-green-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-green-50 rounded">
+                <FiClock className="w-4 h-4 text-green-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-green-600">{thisMonthDocs}</p>
+                <p className="text-xs text-muted-foreground">This Month</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-red-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-red-50 rounded">
+                <FiFileText className="w-4 h-4 text-red-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-red-600">
                   {documents.filter(d => d.document_type === 'late_rent').length}
                 </p>
-                <p className="text-sm text-muted-foreground">Late Rent Notices</p>
+                <p className="text-xs text-muted-foreground">Late Notices</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                <FiFileText className="w-5 h-5 text-purple-600" />
+
+        <Card className="!border-purple-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-purple-50 rounded">
+                <FiFileText className="w-4 h-4 text-purple-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-purple-600">
                   {documents.filter(d => d.document_type === 'deposit_return').length}
                 </p>
-                <p className="text-sm text-muted-foreground">Deposit Returns</p>
+                <p className="text-xs text-muted-foreground">Deposits</p>
               </div>
             </div>
           </CardContent>
@@ -409,9 +440,10 @@ export default function DocumentsPage() {
           ) : (
             <>
               {/* Table Header */}
-              <div className="hidden md:grid grid-cols-12 gap-6 px-6 py-3 text-sm font-medium text-gray-500">
-                <div className="col-span-6">Document</div>
-                <div className="col-span-3">Type</div>
+              <div className="hidden md:grid grid-cols-12 gap-4 px-6 py-3 text-sm font-medium text-gray-500">
+                <div className="col-span-5">Document</div>
+                <div className="col-span-2">Type</div>
+                <div className="col-span-2">Status</div>
                 <div className="col-span-2">Date</div>
                 <div className="col-span-1 text-right">Actions</div>
               </div>
@@ -421,10 +453,10 @@ export default function DocumentsPage() {
                 {documents.map((doc) => (
                   <div
                     key={doc.id}
-                    className="grid grid-cols-1 md:grid-cols-12 gap-6 px-5 py-5 bg-gray-50/50 hover:bg-gray-100/70 rounded-xl transition-colors border border-gray-100 items-center"
+                    className="grid grid-cols-1 md:grid-cols-12 gap-4 px-5 py-5 bg-gray-50/50 hover:bg-gray-100/70 rounded-xl transition-colors border border-gray-100 items-center"
                   >
                     {/* Document Info */}
-                    <div className="md:col-span-6">
+                    <div className="md:col-span-5">
                       <Link
                         href={`/dashboard/documents/${doc.id}`}
                         className="font-medium text-blue-600 hover:underline block truncate"
@@ -440,10 +472,25 @@ export default function DocumentsPage() {
                     </div>
 
                     {/* Type */}
-                    <div className="md:col-span-3 flex items-center">
+                    <div className="md:col-span-2">
                       <span className={`inline-flex px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${documentTypeColors[doc.document_type] || documentTypeColors.other}`}>
                         {documentTypeLabels[doc.document_type] || doc.document_type}
                       </span>
+                    </div>
+
+                    {/* Status */}
+                    <div className="md:col-span-2">
+                      {doc.signature_status && signatureStatusConfig[doc.signature_status] ? (
+                        <span className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap ${signatureStatusConfig[doc.signature_status].color}`}>
+                          <SignatureStatusIcon status={doc.signature_status} />
+                          {signatureStatusConfig[doc.signature_status].label}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap bg-gray-100 text-gray-600">
+                          <FiFileText className="w-3 h-3" />
+                          Draft
+                        </span>
+                      )}
                     </div>
 
                     {/* Date */}

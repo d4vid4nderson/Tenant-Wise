@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Modal, ConfirmModal } from '@/components/ui/Modal';
-import { FiHome, FiArrowLeft, FiMapPin, FiUsers, FiFileText, FiEdit2, FiTrash2, FiSave, FiX, FiCheck, FiAlertCircle, FiPlus, FiCalendar, FiDollarSign, FiUpload, FiImage, FiRefreshCw, FiStar, FiChevronLeft, FiChevronRight, FiAlignLeft, FiZap, FiUserPlus, FiUserMinus } from 'react-icons/fi';
+import { FiHome, FiArrowLeft, FiMapPin, FiUsers, FiFileText, FiEdit2, FiTrash2, FiSave, FiX, FiCheck, FiAlertCircle, FiPlus, FiCalendar, FiDollarSign, FiUpload, FiImage, FiRefreshCw, FiStar, FiChevronLeft, FiChevronRight, FiAlignLeft, FiZap, FiUserPlus, FiUserMinus, FiTarget } from 'react-icons/fi';
+import FocalPointSelector from '@/components/FocalPointSelector';
 import RentComparisonChart from '@/components/RentComparisonChart';
 import { RichTextEditor, RichTextDisplay } from '@/components/ui/RichTextEditor';
 
@@ -31,6 +32,8 @@ interface Property {
   bathrooms: number | null;
   sqft: number | null;
   rent_due_day: number | null;
+  cover_focal_x: number | null;
+  cover_focal_y: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -45,6 +48,7 @@ interface Tenant {
   lease_end: string | null;
   rent_amount: number | null;
   status: string;
+  unit_number: string | null;
 }
 
 interface Document {
@@ -61,6 +65,8 @@ interface PropertyImage {
   caption: string | null;
   display_order: number;
   is_primary: boolean;
+  focal_x: number | null;
+  focal_y: number | null;
   created_at: string;
 }
 
@@ -141,6 +147,10 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [pendingUploads, setPendingUploads] = useState<{ file: File; preview: string; caption: string }[]>([]);
   const [deletingImageId, setDeletingImageId] = useState<string | null>(null);
+
+  // Focal point editing state
+  const [editingFocalPoint, setEditingFocalPoint] = useState<{ type: 'cover' | 'gallery'; imageId?: string; imageUrl: string; focalX: number; focalY: number } | null>(null);
+  const [savingFocalPoint, setSavingFocalPoint] = useState(false);
 
   // Delete confirmation modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -489,6 +499,57 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
     }
   };
 
+  // Save focal point
+  const saveFocalPoint = async (focalX: number, focalY: number) => {
+    if (!editingFocalPoint) return;
+
+    setSavingFocalPoint(true);
+    try {
+      if (editingFocalPoint.type === 'cover') {
+        // Update cover image focal point on the property
+        const response = await fetch(`/api/properties/${id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            cover_focal_x: focalX,
+            cover_focal_y: focalY,
+          }),
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          setProperty(result.data);
+          showMessage('success', 'Cover image focal point saved');
+        } else {
+          throw new Error('Failed to save focal point');
+        }
+      } else if (editingFocalPoint.type === 'gallery' && editingFocalPoint.imageId) {
+        // Update gallery image focal point
+        const response = await fetch(`/api/properties/${id}/images`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            image_id: editingFocalPoint.imageId,
+            focal_x: focalX,
+            focal_y: focalY,
+          }),
+        });
+
+        if (response.ok) {
+          await loadPropertyImages();
+          showMessage('success', 'Image focal point saved');
+        } else {
+          throw new Error('Failed to save focal point');
+        }
+      }
+      setEditingFocalPoint(null);
+    } catch (error) {
+      showMessage('error', 'Failed to save focal point');
+    } finally {
+      setSavingFocalPoint(false);
+    }
+  };
+
   // Gallery navigation
   const nextImage = () => {
     setGalleryIndex((prev) => (prev + 1) % propertyImages.length);
@@ -555,7 +616,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
       }
 
       setFormData(prev => ({ ...prev, market_rent: result.data.market_rent }));
-      showMessage('success', `Market rent fetched: $${result.data.market_rent}/mo (${result.data.area_name}, FY${result.data.year})`);
+      showMessage('success', `Est. market rent: $${result.data.market_rent.toLocaleString()}/mo (${result.data.area_name})`);
     } catch (error) {
       showMessage('error', error instanceof Error ? error.message : 'Failed to fetch market rent');
     } finally {
@@ -992,22 +1053,40 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     <p className="text-xs text-muted-foreground mb-3">This is the main image shown on property cards and at the top of the detail page</p>
 
                     {imagePreview ? (
-                      <div className="relative w-full h-48 rounded-lg overflow-hidden mb-3">
+                      <div className="relative w-full h-48 rounded-lg overflow-hidden mb-3 group">
                         <img
                           src={imagePreview}
                           alt="Cover preview"
                           className="w-full h-full object-cover"
+                          style={{ objectPosition: `${property?.cover_focal_x ?? 50}% ${property?.cover_focal_y ?? 50}%` }}
                         />
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setImagePreview(null);
-                            setImageFile(null);
-                          }}
-                          className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600"
-                        >
-                          <FiX className="w-4 h-4" />
-                        </button>
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          {property?.image_url && !imageFile && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingFocalPoint({
+                                type: 'cover',
+                                imageUrl: property.image_url!,
+                                focalX: property.cover_focal_x ?? 50,
+                                focalY: property.cover_focal_y ?? 50,
+                              })}
+                              className="p-1.5 bg-blue-500 text-white rounded-full hover:bg-blue-600 opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Set focal point"
+                            >
+                              <FiTarget className="w-4 h-4" />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setImagePreview(null);
+                              setImageFile(null);
+                            }}
+                            className="p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600"
+                          >
+                            <FiX className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center hover:border-blue-400 transition-colors mb-3">
@@ -1041,9 +1120,24 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                                 src={img.image_url}
                                 alt="Property"
                                 className="w-full h-20 object-cover rounded-lg"
+                                style={{ objectPosition: `${img.focal_x ?? 50}% ${img.focal_y ?? 50}%` }}
                               />
                               {/* Actions overlay */}
-                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center">
+                              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingFocalPoint({
+                                    type: 'gallery',
+                                    imageId: img.id,
+                                    imageUrl: img.image_url,
+                                    focalX: img.focal_x ?? 50,
+                                    focalY: img.focal_y ?? 50,
+                                  })}
+                                  className="p-1.5 bg-blue-500 text-white rounded-full hover:bg-blue-600"
+                                  title="Set focal point"
+                                >
+                                  <FiTarget className="w-3 h-3" />
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => deleteGalleryImage(img.id)}
@@ -1165,6 +1259,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                         src={property.image_url}
                         alt={property.address_line1}
                         className="w-full h-full object-cover"
+                        style={{ objectPosition: `${property.cover_focal_x ?? 50}% ${property.cover_focal_y ?? 50}%` }}
                       />
                       <div className="absolute top-3 left-3 px-2 py-1 bg-black/60 text-white text-xs font-medium rounded-full">
                         Cover Image
@@ -1216,12 +1311,28 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                       <p className="font-semibold">{propertyTypeLabels[property.property_type || ''] || '—'}</p>
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Monthly Rent</p>
-                      <p className="font-semibold text-green-600 text-lg">{property.monthly_rent ? `$${property.monthly_rent.toLocaleString()}` : '—'}</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                        {(property.unit_count || 1) > 1 ? 'Rent/Unit' : 'Monthly Rent'}
+                      </p>
+                      <p className="font-semibold text-green-600 text-lg">
+                        {property.monthly_rent ? `$${property.monthly_rent.toLocaleString()}` : '—'}
+                      </p>
+                      {(property.unit_count || 1) > 1 && property.monthly_rent && (
+                        <p className="text-xs text-green-600">
+                          Total: ${(property.monthly_rent * (property.unit_count || 1)).toLocaleString()}/mo
+                        </p>
+                      )}
                     </div>
                     <div>
-                      <p className="text-xs text-muted-foreground uppercase tracking-wide">Market Rent</p>
+                      <p className="text-xs text-muted-foreground uppercase tracking-wide">
+                        {(property.unit_count || 1) > 1 ? 'Market/Unit' : 'Market Rent'}
+                      </p>
                       <p className="font-semibold text-lg">{property.market_rent ? `$${property.market_rent.toLocaleString()}` : '—'}</p>
+                      {(property.unit_count || 1) > 1 && property.market_rent && (
+                        <p className="text-xs text-muted-foreground">
+                          Total: ${(property.market_rent * (property.unit_count || 1)).toLocaleString()}/mo
+                        </p>
+                      )}
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground uppercase tracking-wide">Rent Due</p>
@@ -1263,6 +1374,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                           src={propertyImages[galleryIndex]?.image_url}
                           alt={`Property image ${galleryIndex + 1}`}
                           className="w-full h-full object-cover"
+                          style={{ objectPosition: `${propertyImages[galleryIndex]?.focal_x ?? 50}% ${propertyImages[galleryIndex]?.focal_y ?? 50}%` }}
                         />
                         {propertyImages[galleryIndex]?.caption && (
                           <div className="absolute bottom-0 left-0 right-0 px-3 py-2 bg-black/60 text-white text-sm">
@@ -1306,6 +1418,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                                 src={img.image_url}
                                 alt={`Thumbnail ${idx + 1}`}
                                 className="w-full h-full object-cover"
+                                style={{ objectPosition: `${img.focal_x ?? 50}% ${img.focal_y ?? 50}%` }}
                               />
                             </button>
                           ))}
@@ -1340,24 +1453,26 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                     </select>
                   ) : (
                     (() => {
-                      const status = property.status || 'available';
                       const activeTenants = tenants.filter(t => t.status === 'active').length;
                       const unitCount = property.unit_count || 1;
 
+                      // Automatically derive status: if there are active tenants, it's occupied
+                      const derivedStatus = activeTenants > 0 ? 'occupied' : (property.status || 'available');
+
                       // Get status gradient and label
                       let gradientClass = 'from-green-500 to-emerald-500';
-                      let statusLabel = propertyStatusLabels[status] || 'Available';
+                      let statusLabel = propertyStatusLabels[derivedStatus] || 'Available';
 
-                      if (status === 'occupied') {
+                      if (derivedStatus === 'occupied') {
                         gradientClass = 'from-blue-500 to-indigo-500';
-                      } else if (status === 'under_construction') {
+                      } else if (derivedStatus === 'under_construction') {
                         gradientClass = 'from-orange-500 to-amber-500';
-                      } else if (status === 'available') {
+                      } else if (derivedStatus === 'available') {
                         gradientClass = 'from-green-500 to-emerald-500';
                       }
 
                       // For multi-unit occupied properties, show occupancy count
-                      if (status === 'occupied' && unitCount > 1) {
+                      if (derivedStatus === 'occupied' && unitCount > 1) {
                         statusLabel = `${activeTenants}/${unitCount} Units`;
                       }
 
@@ -1380,7 +1495,7 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Monthly Income</span>
                   <span className="font-semibold text-green-600">
-                    ${tenants.filter(t => t.status === 'active').reduce((sum, t) => sum + (t.rent_amount || 0), 0).toLocaleString()}
+                    ${tenants.filter(t => t.status === 'active').reduce((sum, t) => sum + (t.rent_amount || property.monthly_rent || 0), 0).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -1418,7 +1533,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
                       className="flex items-center justify-between p-2 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                     >
                       <div>
-                        <p className="text-sm font-medium">{tenant.first_name} {tenant.last_name}</p>
+                        <p className="text-sm font-medium">
+                          {tenant.first_name} {tenant.last_name}
+                          {tenant.unit_number && (
+                            <span className="ml-1 text-xs text-blue-600 font-normal">(Unit {tenant.unit_number})</span>
+                          )}
+                        </p>
                         <span className={`text-xs px-1.5 py-0.5 rounded-full ${
                           tenant.status === 'active' ? 'bg-green-100 text-green-700' :
                           tenant.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
@@ -1441,10 +1561,12 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
           {property.monthly_rent && !editing && (
             <RentComparisonChart
               propertyId={property.id}
-              currentRent={property.monthly_rent}
-              currentMarketRent={property.market_rent}
+              currentRent={property.monthly_rent * (property.unit_count || 1)}
+              currentMarketRent={property.market_rent ? property.market_rent * (property.unit_count || 1) : null}
               zipCode={property.zip}
+              unitCount={property.unit_count || 1}
               onMarketRentUpdated={(marketRent) => {
+                // marketRent comes back as per-unit from API, store as per-unit
                 setProperty(prev => prev ? { ...prev, market_rent: marketRent } : prev);
               }}
             />
@@ -1665,6 +1787,18 @@ export default function PropertyDetailPage({ params }: { params: Promise<{ id: s
         confirmText="Delete Property"
         variant="danger"
       />
+
+      {/* Focal Point Selector Modal */}
+      {editingFocalPoint && (
+        <FocalPointSelector
+          imageUrl={editingFocalPoint.imageUrl}
+          initialX={editingFocalPoint.focalX}
+          initialY={editingFocalPoint.focalY}
+          onSave={saveFocalPoint}
+          onCancel={() => setEditingFocalPoint(null)}
+          saving={savingFocalPoint}
+        />
+      )}
     </div>
   );
 }

@@ -69,7 +69,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { address_line1, address_line2, city, state, zip, unit_count, property_type, status, notes, description, monthly_rent, market_rent, image_url, latitude, longitude, bedrooms, bathrooms, sqft, rent_due_day } = body;
+    const { address_line1, address_line2, city, state, zip, unit_count, property_type, status, notes, description, monthly_rent, market_rent, image_url, latitude, longitude, bedrooms, bathrooms, sqft, rent_due_day, cover_focal_x, cover_focal_y } = body;
 
     // Build update object
     const updateData: PropertyUpdate = {
@@ -94,6 +94,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (bathrooms !== undefined) updateData.bathrooms = bathrooms;
     if (sqft !== undefined) updateData.sqft = sqft;
     if (rent_due_day !== undefined) updateData.rent_due_day = rent_due_day;
+    if (cover_focal_x !== undefined) updateData.cover_focal_x = Math.max(0, Math.min(100, cover_focal_x));
+    if (cover_focal_y !== undefined) updateData.cover_focal_y = Math.max(0, Math.min(100, cover_focal_y));
 
     // Update property
     const { data, error } = await supabase

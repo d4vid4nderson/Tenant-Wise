@@ -638,3 +638,4 @@ npm run dev
 **Author**: David Anderson
 **Created**: November 2025
 **Stack**: Next.js + Supabase + Claude + Stripe
+- don't start servers, just let me know when I need to kill and restart my server

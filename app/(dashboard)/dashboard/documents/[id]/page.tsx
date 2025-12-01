@@ -675,7 +675,7 @@ export default function DocumentDetailPage({ params }: { params: Promise<{ id: s
 
                 <div className="p-3 bg-blue-50 rounded-lg">
                   <p className="text-sm text-blue-700">
-                    <strong>Note:</strong> Both you and the tenant will receive an email with a link to sign this document via Dropbox Sign.
+                    <strong>Note:</strong> Both you and the tenant will receive an email with a link to sign this document via SignWell.
                   </p>
                 </div>
               </div>

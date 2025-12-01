@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { ConfirmModal } from '@/components/ui/Modal';
-import { FiUser, FiMail, FiLock, FiCreditCard, FiBell, FiTrash2, FiCheck, FiAlertCircle, FiX, FiAlertTriangle, FiHome, FiUsers } from 'react-icons/fi';
+import { FiUser, FiMail, FiLock, FiCreditCard, FiBell, FiTrash2, FiCheck, FiAlertCircle, FiX, FiAlertTriangle, FiHome, FiUsers, FiAward, FiFileText } from 'react-icons/fi';
 import BillingModal from '@/components/BillingModal';
 
 interface Property {
@@ -581,19 +581,58 @@ export default function SettingsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between p-4 bg-gray-50 rounded-lg mb-4">
-            <div>
-              <p className="font-medium">Current Plan</p>
-              <p className="text-sm text-muted-foreground">
-                {profile?.subscription_tier === 'free'
-                  ? `${3 - (profile?.documents_this_month || 0)} documents remaining this month`
-                  : 'Unlimited documents'}
-              </p>
+          {/* Plan Card - matches dashboard style */}
+          {profile?.subscription_tier === 'pro' ? (
+            <div className="relative bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl shadow-lg mb-4 group overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+              <div className="p-4 flex items-center gap-3 relative">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <FiFileText className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-bold text-white">Pro Plan</p>
+                  <p className="text-sm text-white/80">Multi-property & tenant profiles</p>
+                </div>
+                <span className="p-2 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg">
+                  <FiAward className="w-5 h-5" />
+                </span>
+              </div>
             </div>
-            <span className={`px-3 py-1 rounded-full text-sm font-medium ${tierColors[profile?.subscription_tier || 'free']}`}>
-              {tierLabels[profile?.subscription_tier || 'free']}
-            </span>
-          </div>
+          ) : profile?.subscription_tier === 'basic' ? (
+            <div className="bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl shadow-lg mb-4">
+              <div className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-white/20 rounded-lg">
+                  <FiFileText className="w-5 h-5 text-white" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-bold text-white">Basic Plan</p>
+                  <p className="text-sm text-white/80">Unlimited documents, 1 property</p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-bold bg-white/20 text-white flex items-center gap-1.5">
+                  <FiAward className="w-4 h-4 text-blue-200" />
+                  Basic
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div className="border border-gray-200 rounded-xl mb-4">
+              <div className="p-4 flex items-center gap-3">
+                <div className="p-2 bg-gray-100 rounded-lg">
+                  <FiFileText className="w-5 h-5 text-gray-500" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-lg font-bold text-gray-700">Free Plan</p>
+                  <p className="text-sm text-muted-foreground">
+                    {3 - (profile?.documents_this_month || 0)} documents remaining this month
+                  </p>
+                </div>
+                <span className="px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600 flex items-center gap-1.5">
+                  <FiAward className="w-4 h-4 text-gray-400" />
+                  Free
+                </span>
+              </div>
+            </div>
+          )}
 
           <div className="flex items-center justify-between">
             {profile?.subscription_tier !== 'free' && (

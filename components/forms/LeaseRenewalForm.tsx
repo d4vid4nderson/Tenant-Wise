@@ -31,9 +31,11 @@ interface Tenant {
 interface LeaseRenewalFormProps {
   onGenerate: (data: LeaseRenewalData) => void;
   loading: boolean;
+  initialTenantId?: string | null;
+  initialPropertyId?: string | null;
 }
 
-export function LeaseRenewalForm({ onGenerate, loading }: LeaseRenewalFormProps) {
+export function LeaseRenewalForm({ onGenerate, loading, initialTenantId, initialPropertyId }: LeaseRenewalFormProps) {
   const supabase = createClient();
   const [properties, setProperties] = useState<Property[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
@@ -59,6 +61,66 @@ export function LeaseRenewalForm({ onGenerate, loading }: LeaseRenewalFormProps)
   useEffect(() => {
     loadData();
   }, []);
+
+  // Auto-select tenant/property from URL params after data loads
+  useEffect(() => {
+    if (loadingData || (!initialTenantId && !initialPropertyId)) return;
+
+    // If we have an initial tenant, select them first (this will also select their property)
+    if (initialTenantId) {
+      const tenant = tenants.find(t => t.id === initialTenantId);
+      if (tenant) {
+        // First select the property if tenant has one
+        if (tenant.property_id) {
+          const property = properties.find(p => p.id === tenant.property_id);
+          if (property) {
+            setSelectedPropertyId(property.id);
+            const fullAddress = property.address_line2
+              ? `${property.address_line1}, ${property.address_line2}`
+              : property.address_line1;
+            setFormData(prev => ({
+              ...prev,
+              propertyAddress: fullAddress,
+              city: property.city,
+              state: property.state,
+              zip: property.zip,
+              currentRent: tenant.rent_amount || property.monthly_rent || prev.currentRent,
+              newRent: tenant.rent_amount || property.monthly_rent || prev.newRent,
+            }));
+          }
+        }
+        // Then select the tenant
+        setSelectedTenantId(tenant.id);
+        setFormData(prev => ({
+          ...prev,
+          tenantName: `${tenant.first_name} ${tenant.last_name}`,
+          currentRent: tenant.rent_amount || prev.currentRent,
+          newRent: tenant.rent_amount || prev.newRent,
+          currentLeaseEnd: tenant.lease_end || prev.currentLeaseEnd,
+        }));
+
+        // Auto-populate lease dates if tenant has lease_end
+        if (tenant.lease_end) {
+          const currentEnd = new Date(tenant.lease_end);
+          const newStart = new Date(currentEnd);
+          newStart.setDate(newStart.getDate() + 1);
+          const newEnd = new Date(newStart);
+          newEnd.setFullYear(newEnd.getFullYear() + 1);
+          newEnd.setDate(newEnd.getDate() - 1);
+
+          setFormData(prev => ({
+            ...prev,
+            currentLeaseEnd: tenant.lease_end!,
+            newLeaseStart: newStart.toISOString().split('T')[0],
+            newLeaseEnd: newEnd.toISOString().split('T')[0],
+          }));
+        }
+      }
+    } else if (initialPropertyId) {
+      // Only property ID provided, select it
+      handlePropertyChange(initialPropertyId);
+    }
+  }, [loadingData, initialTenantId, initialPropertyId, tenants, properties]);
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();

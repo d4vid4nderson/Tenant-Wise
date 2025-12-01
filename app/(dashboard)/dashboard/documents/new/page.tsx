@@ -22,6 +22,7 @@ import {
   FiClipboard,
   FiCheck,
   FiEdit,
+  FiSend,
 } from 'react-icons/fi';
 
 type DocumentType = 'late_rent' | 'lease_renewal' | 'deposit_return' | 'maintenance' | 'move_in_out' | 'lease_agreement';
@@ -99,10 +100,14 @@ function NewDocumentContent() {
     content: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
 
   // Pre-selected tenant/property from query params (support both naming conventions)
   const tenantId = searchParams.get('tenantId') || searchParams.get('tenant');
   const propertyId = searchParams.get('propertyId') || searchParams.get('property');
+  const rentDueDate = searchParams.get('rentDueDate');
+  const autoGenerate = searchParams.get('autoGenerate') === 'true';
   const typeParam = searchParams.get('type') as DocumentType | null;
 
   useEffect(() => {
@@ -162,14 +167,46 @@ function NewDocumentContent() {
     setGeneratedDocument(null);
     setSelectedType(null);
     setError(null);
+    setSendSuccess(false);
+  };
+
+  const handleSendDocument = async () => {
+    if (!generatedDocument?.id) return;
+
+    setSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/documents/${generatedDocument.id}/signature`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: `Please sign: ${generatedDocument.title}`,
+          message: 'Please review and sign this document at your earliest convenience.',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send document');
+      }
+
+      setSendSuccess(true);
+    } catch (err) {
+      console.error('Error sending document:', err);
+      setError(err instanceof Error ? err.message : 'Failed to send document');
+    } finally {
+      setSending(false);
+    }
   };
 
   const renderForm = () => {
     switch (selectedType) {
       case 'late_rent':
-        return <LateRentNoticeForm onGenerate={handleGenerate} loading={loading} />;
+        return <LateRentNoticeForm onGenerate={handleGenerate} loading={loading} initialTenantId={tenantId} initialPropertyId={propertyId} initialRentDueDate={rentDueDate} autoGenerate={autoGenerate} />;
       case 'lease_renewal':
-        return <LeaseRenewalForm onGenerate={handleGenerate} loading={loading} />;
+        return <LeaseRenewalForm onGenerate={handleGenerate} loading={loading} initialTenantId={tenantId} initialPropertyId={propertyId} />;
       case 'deposit_return':
         return <DepositReturnForm onGenerate={handleGenerate} loading={loading} />;
       case 'maintenance':
@@ -217,27 +254,50 @@ function NewDocumentContent() {
 
       {/* Success Message */}
       {generatedDocument && (
-        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl">
+        <div className={`mb-6 p-4 ${sendSuccess ? 'bg-blue-50 border-blue-200' : 'bg-green-50 border-green-200'} border rounded-xl`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
-                <FiCheck className="w-5 h-5 text-green-600" />
+              <div className={`w-10 h-10 ${sendSuccess ? 'bg-blue-100' : 'bg-green-100'} rounded-full flex items-center justify-center`}>
+                {sendSuccess ? (
+                  <FiSend className="w-5 h-5 text-blue-600" />
+                ) : (
+                  <FiCheck className="w-5 h-5 text-green-600" />
+                )}
               </div>
               <div>
-                <p className="font-medium text-green-800">Document Generated Successfully!</p>
-                <p className="text-sm text-green-700">Your document has been saved and is ready to use.</p>
+                {sendSuccess ? (
+                  <>
+                    <p className="font-medium text-blue-800">Document Sent for Signature!</p>
+                    <p className="text-sm text-blue-700">The tenant will receive an email to sign the document.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-medium text-green-800">Document Generated Successfully!</p>
+                    <p className="text-sm text-green-700">Your document has been saved and is ready to send.</p>
+                  </>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2">
               <button
                 onClick={handleNewDocument}
-                className="px-4 py-2 border border-green-300 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                className={`px-4 py-2 border ${sendSuccess ? 'border-blue-300 text-blue-700 hover:bg-blue-100' : 'border-green-300 text-green-700 hover:bg-green-100'} rounded-lg transition-colors`}
               >
                 Create Another
               </button>
+              {!sendSuccess && (
+                <button
+                  onClick={handleSendDocument}
+                  disabled={sending}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  <FiSend className="w-4 h-4" />
+                  {sending ? 'Sending...' : 'Send to Tenant'}
+                </button>
+              )}
               <button
                 onClick={handleViewDocument}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                className={`px-4 py-2 ${sendSuccess ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'} text-white rounded-lg transition-colors`}
               >
                 View Document
               </button>

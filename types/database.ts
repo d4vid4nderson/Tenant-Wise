@@ -47,6 +47,8 @@ export interface Property {
   bathrooms: number | null;
   sqft: number | null;
   rent_due_day: number | null;
+  cover_focal_x: number | null;
+  cover_focal_y: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -74,6 +76,7 @@ export interface Tenant {
   security_deposit: number | null;
   status: TenantStatus;
   notes: string | null;
+  unit_number: string | null;
   // Screening/Approval fields
   date_of_birth: string | null;
   ssn_last_four: string | null;
@@ -227,10 +230,12 @@ export type ProfileInsert = Omit<Profile, 'created_at' | 'updated_at'> & {
   updated_at?: string;
 };
 
-export type PropertyInsert = Omit<Property, 'id' | 'created_at' | 'updated_at'> & {
+export type PropertyInsert = Omit<Property, 'id' | 'created_at' | 'updated_at' | 'cover_focal_x' | 'cover_focal_y'> & {
   id?: string;
   created_at?: string;
   updated_at?: string;
+  cover_focal_x?: number | null;
+  cover_focal_y?: number | null;
 };
 
 export type TenantInsert = Omit<Tenant, 'id' | 'created_at' | 'updated_at'> & {

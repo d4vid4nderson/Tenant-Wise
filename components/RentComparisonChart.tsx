@@ -17,6 +17,7 @@ interface RentComparisonChartProps {
   currentRent: number;
   currentMarketRent?: number | null;
   zipCode?: string;
+  unitCount?: number;
   onMarketRentUpdated?: (marketRent: number) => void;
 }
 
@@ -25,6 +26,7 @@ export default function RentComparisonChart({
   currentRent,
   currentMarketRent,
   zipCode,
+  unitCount = 1,
   onMarketRentUpdated,
 }: RentComparisonChartProps) {
   const [history, setHistory] = useState<RentHistoryPoint[]>([]);
@@ -74,7 +76,7 @@ export default function RentComparisonChart({
 
       setFetchMessage({
         type: 'success',
-        text: `Market rent: $${result.data.market_rent}/mo (${result.data.area_name}, FY${result.data.year})`
+        text: `Est. market rent: $${result.data.market_rent.toLocaleString()}/mo (${result.data.area_name})`
       });
 
       // Notify parent component

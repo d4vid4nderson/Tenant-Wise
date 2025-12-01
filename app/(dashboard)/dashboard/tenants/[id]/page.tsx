@@ -79,6 +79,8 @@ interface Property {
   city: string;
   state: string;
   zip: string;
+  unit_count: number | null;
+  monthly_rent: number | null;
 }
 
 interface Tenant {
@@ -88,6 +90,7 @@ interface Tenant {
   email: string | null;
   phone: string | null;
   property_id: string | null;
+  unit_number: string | null;
   property?: Property;
   lease_start: string | null;
   lease_end: string | null;
@@ -168,6 +171,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
   // Edit form state
   const [formData, setFormData] = useState<Partial<Tenant>>({});
   const [pets, setPets] = useState<Pet[]>([]);
+  const [propertyTenants, setPropertyTenants] = useState<{id: string; first_name: string; last_name: string; unit_number: string | null}[]>([]);
 
   useEffect(() => {
     loadData();
@@ -197,10 +201,10 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
     setFormData(tenantData);
     setPets(tenantData.pets || []);
 
-    // Load all properties for dropdown
+    // Load all properties for dropdown (including monthly_rent for auto-fill)
     const { data: propertiesData } = await supabase
       .from('properties')
-      .select('id, address_line1, city, state, zip')
+      .select('id, address_line1, city, state, zip, unit_count, monthly_rent')
       .eq('user_id', user.id)
       .order('address_line1');
 
@@ -215,6 +219,22 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
 
     setDocuments(documentsData || []);
     setLoading(false);
+
+    // Load tenants for the current property if assigned
+    if (tenantData.property_id) {
+      loadPropertyTenants(tenantData.property_id);
+    }
+  }
+
+  // Fetch tenants for a specific property to show unit occupancy
+  async function loadPropertyTenants(propertyId: string) {
+    const { data: tenantsData } = await supabase
+      .from('tenants')
+      .select('id, first_name, last_name, unit_number')
+      .eq('property_id', propertyId)
+      .neq('id', resolvedParams.id); // Exclude current tenant
+
+    setPropertyTenants(tenantsData || []);
   }
 
   const handleSave = async () => {
@@ -222,11 +242,24 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
 
     setSaving(true);
     try {
+      // Auto-fill rent from property if rent_amount was cleared but property is assigned
+      let dataToSave = { ...formData };
+      if (dataToSave.property_id && !dataToSave.rent_amount) {
+        const selectedProperty = properties.find(p => p.id === dataToSave.property_id);
+        if (selectedProperty?.monthly_rent) {
+          dataToSave.rent_amount = selectedProperty.monthly_rent;
+          // Also auto-fill security deposit if empty
+          if (!dataToSave.security_deposit) {
+            dataToSave.security_deposit = selectedProperty.monthly_rent;
+          }
+        }
+      }
+
       const response = await fetch(`/api/tenants/${tenant.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...formData,
+          ...dataToSave,
           pets: pets.length > 0 ? pets : null,
           has_pets: pets.length > 0,
         }),
@@ -239,6 +272,7 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
       }
 
       setTenant({ ...result.data, property: tenant.property });
+      setFormData(result.data); // Update formData with the saved values (including auto-filled rent)
       setEditing(false);
       setMessage({ type: 'success', text: 'Tenant updated successfully!' });
     } catch (error) {
@@ -496,7 +530,20 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             ) : (
               <>
                 <button
-                  onClick={() => setEditing(true)}
+                  onClick={() => {
+                    // When entering edit mode, auto-fill rent from property if not set
+                    if (tenant.property_id && !tenant.rent_amount) {
+                      const selectedProperty = properties.find(p => p.id === tenant.property_id);
+                      if (selectedProperty?.monthly_rent) {
+                        setFormData(prev => ({
+                          ...prev,
+                          rent_amount: selectedProperty.monthly_rent,
+                          security_deposit: prev.security_deposit || selectedProperty.monthly_rent,
+                        }));
+                      }
+                    }
+                    setEditing(true);
+                  }}
                   className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30"
                 >
                   <FiEdit2 className="w-4 h-4" />
@@ -980,28 +1027,93 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
             </CardHeader>
             <CardContent>
               {editing ? (
-                <select
-                  value={formData.property_id || ''}
-                  onChange={(e) => setFormData({ ...formData, property_id: e.target.value || null })}
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  <option value="">No property assigned</option>
-                  {properties.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.address_line1}, {p.city}
-                    </option>
-                  ))}
-                </select>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Property</label>
+                    <select
+                      value={formData.property_id || ''}
+                      onChange={(e) => {
+                        const newPropertyId = e.target.value || null;
+                        const selectedProperty = properties.find(p => p.id === newPropertyId);
+
+                        // Always update rent when property changes
+                        // If new property has monthly_rent, use it; otherwise clear the fields
+                        const rentAmount = selectedProperty?.monthly_rent ?? null;
+                        const securityDeposit = selectedProperty?.monthly_rent ?? null;
+
+                        setFormData({
+                          ...formData,
+                          property_id: newPropertyId,
+                          unit_number: null,
+                          rent_amount: rentAmount,
+                          security_deposit: securityDeposit,
+                        });
+                        if (newPropertyId) {
+                          loadPropertyTenants(newPropertyId);
+                        } else {
+                          setPropertyTenants([]);
+                        }
+                      }}
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">No property assigned</option>
+                      {properties.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.address_line1}, {p.city} {(p.unit_count || 1) > 1 ? `(${p.unit_count} units)` : ''}{p.monthly_rent ? ` - $${p.monthly_rent.toLocaleString()}/mo` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {(() => {
+                    const selectedProperty = properties.find(p => p.id === formData.property_id);
+                    const unitCount = selectedProperty?.unit_count || 1;
+                    if (unitCount > 1) {
+                      return (
+                        <div>
+                          <label className="block text-sm font-medium mb-2">Unit Number</label>
+                          <select
+                            value={formData.unit_number || ''}
+                            onChange={(e) => setFormData({ ...formData, unit_number: e.target.value || null })}
+                            className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          >
+                            <option value="">Select unit</option>
+                            {Array.from({ length: unitCount }, (_, i) => i + 1).map((unit) => {
+                              const occupyingTenant = propertyTenants.find(t => t.unit_number === String(unit));
+                              return (
+                                <option key={unit} value={String(unit)}>
+                                  Unit {unit}{occupyingTenant ? ` - ${occupyingTenant.first_name} ${occupyingTenant.last_name}` : ' - Available'}
+                                </option>
+                              );
+                            })}
+                          </select>
+                          <p className="text-xs text-muted-foreground mt-1">Select which unit this tenant occupies</p>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
               ) : tenant.property ? (
-                <Link
-                  href={`/dashboard/properties/${tenant.property.id}`}
-                  className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                  <p className="font-medium">{tenant.property.address_line1}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {tenant.property.city}, {tenant.property.state} {tenant.property.zip}
-                  </p>
-                </Link>
+                <div className="space-y-3">
+                  <Link
+                    href={`/dashboard/properties/${tenant.property.id}`}
+                    className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                  >
+                    <p className="font-medium">
+                      {tenant.property.address_line1}
+                      {tenant.unit_number && <span className="text-blue-600">, Unit {tenant.unit_number}</span>}
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      {tenant.property.city}, {tenant.property.state} {tenant.property.zip}
+                    </p>
+                  </Link>
+                  {tenant.unit_number && (
+                    <div className="p-3 bg-blue-50 rounded-lg">
+                      <p className="text-xs text-blue-600 font-medium">Unit Number</p>
+                      <p className="font-semibold text-blue-700">{tenant.unit_number}</p>
+                    </div>
+                  )}
+                </div>
               ) : (
                 <p className="text-muted-foreground">No property assigned</p>
               )}
@@ -1123,14 +1235,28 @@ export default function TenantDetailPage({ params }: { params: Promise<{ id: str
                   <div className="p-3 bg-green-50 rounded-lg">
                     <p className="text-sm text-green-600">Monthly Rent</p>
                     <p className="font-semibold text-xl text-green-700">
-                      {tenant.rent_amount ? `$${tenant.rent_amount.toLocaleString()}` : 'Not set'}
+                      {tenant.rent_amount
+                        ? `$${tenant.rent_amount.toLocaleString()}`
+                        : tenant.property?.monthly_rent
+                          ? `$${tenant.property.monthly_rent.toLocaleString()}`
+                          : 'Not set'}
                     </p>
+                    {!tenant.rent_amount && tenant.property?.monthly_rent && (
+                      <p className="text-xs text-green-500 mt-1">From property default</p>
+                    )}
                   </div>
                   <div className="p-3 bg-gray-50 rounded-lg">
                     <p className="text-sm text-muted-foreground">Security Deposit</p>
                     <p className="font-medium">
-                      {tenant.security_deposit ? `$${tenant.security_deposit.toLocaleString()}` : 'Not set'}
+                      {tenant.security_deposit
+                        ? `$${tenant.security_deposit.toLocaleString()}`
+                        : tenant.property?.monthly_rent
+                          ? `$${tenant.property.monthly_rent.toLocaleString()}`
+                          : 'Not set'}
                     </p>
+                    {!tenant.security_deposit && tenant.property?.monthly_rent && (
+                      <p className="text-xs text-gray-400 mt-1">From property default</p>
+                    )}
                   </div>
                 </div>
               )}

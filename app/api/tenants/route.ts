@@ -106,6 +106,7 @@ export async function POST(request: NextRequest) {
       security_deposit,
       status = 'active',
       notes,
+      unit_number,
     } = body;
 
     // Validate required fields
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
       security_deposit: security_deposit || null,
       status,
       notes: notes || null,
+      unit_number: unit_number || null,
       // Screening/Approval fields - set from body or default to null
       date_of_birth: body.date_of_birth || null,
       ssn_last_four: body.ssn_last_four || null,

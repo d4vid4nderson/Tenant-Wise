@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, useEffect, useRef, FormEvent } from 'react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -27,18 +27,41 @@ interface Tenant {
   rent_amount: number | null;
 }
 
+interface LeaseDocument {
+  id: string;
+  tenant_id: string | null;
+  property_id: string | null;
+  form_data: {
+    lateFeeAmount?: number;
+    lateFeeGracePeriod?: number;
+  } | null;
+}
+
 interface LateRentNoticeFormProps {
   onGenerate: (data: LateRentNoticeData) => void;
   loading: boolean;
+  initialTenantId?: string | null;
+  initialPropertyId?: string | null;
+  initialRentDueDate?: string | null;
+  autoGenerate?: boolean;
 }
 
-export function LateRentNoticeForm({ onGenerate, loading }: LateRentNoticeFormProps) {
+export function LateRentNoticeForm({ onGenerate, loading, initialTenantId, initialPropertyId, initialRentDueDate, autoGenerate }: LateRentNoticeFormProps) {
   const supabase = createClient();
   const [properties, setProperties] = useState<Property[]>([]);
   const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [leaseDocuments, setLeaseDocuments] = useState<LeaseDocument[]>([]);
   const [loadingData, setLoadingData] = useState(true);
   const [selectedPropertyId, setSelectedPropertyId] = useState<string>('');
   const [selectedTenantId, setSelectedTenantId] = useState<string>('');
+  const autoGenerateTriggeredRef = useRef(false);
+  const onGenerateRef = useRef(onGenerate);
+  const landlordNameRef = useRef('');
+
+  // Keep onGenerate ref up to date
+  useEffect(() => {
+    onGenerateRef.current = onGenerate;
+  }, [onGenerate]);
 
   const [formData, setFormData] = useState<LateRentNoticeData>({
     landlordName: '',
@@ -58,12 +81,115 @@ export function LateRentNoticeForm({ onGenerate, loading }: LateRentNoticeFormPr
     loadData();
   }, []);
 
+  // Auto-select tenant/property from URL params after data loads
+  useEffect(() => {
+    if (loadingData || (!initialTenantId && !initialPropertyId && !initialRentDueDate)) return;
+
+    // Set rent due date if provided
+    if (initialRentDueDate) {
+      setFormData(prev => ({
+        ...prev,
+        rentDueDate: initialRentDueDate,
+      }));
+    }
+
+    // Helper to get late fee from lease documents
+    const findLateFee = (tenantId: string | null, propertyId: string | null): number => {
+      if (tenantId) {
+        const tenantLease = leaseDocuments.find(doc => doc.tenant_id === tenantId);
+        if (tenantLease?.form_data?.lateFeeAmount) {
+          return tenantLease.form_data.lateFeeAmount;
+        }
+      }
+      if (propertyId) {
+        const propertyLease = leaseDocuments.find(doc => doc.property_id === propertyId);
+        if (propertyLease?.form_data?.lateFeeAmount) {
+          return propertyLease.form_data.lateFeeAmount;
+        }
+      }
+      return 0;
+    };
+
+    // If we have an initial tenant, select them first (this will also select their property)
+    if (initialTenantId) {
+      const tenant = tenants.find(t => t.id === initialTenantId);
+      if (tenant) {
+        const lateFee = findLateFee(tenant.id, tenant.property_id);
+        const rentAmount = tenant.rent_amount || 0;
+
+        // First select the property if tenant has one
+        if (tenant.property_id) {
+          const property = properties.find(p => p.id === tenant.property_id);
+          if (property) {
+            setSelectedPropertyId(property.id);
+            const fullAddress = property.address_line2
+              ? `${property.address_line1}, ${property.address_line2}`
+              : property.address_line1;
+            const finalRentAmount = tenant.rent_amount || property.monthly_rent || 0;
+            setFormData(prev => ({
+              ...prev,
+              propertyAddress: fullAddress,
+              city: property.city,
+              state: property.state,
+              zip: property.zip,
+              rentAmount: finalRentAmount,
+              lateFee: lateFee,
+              totalOwed: finalRentAmount + lateFee,
+            }));
+          }
+        }
+        // Then select the tenant
+        setSelectedTenantId(tenant.id);
+        setFormData(prev => ({
+          ...prev,
+          tenantName: `${tenant.first_name} ${tenant.last_name}`,
+          rentAmount: rentAmount || prev.rentAmount,
+          lateFee: lateFee || prev.lateFee,
+          totalOwed: (rentAmount || prev.rentAmount) + (lateFee || prev.lateFee),
+        }));
+
+        // Trigger auto-generation if enabled
+        if (autoGenerate && !autoGenerateTriggeredRef.current) {
+          autoGenerateTriggeredRef.current = true;
+          // Get final form data with all values
+          const property = properties.find(p => p.id === tenant.property_id);
+          const fullAddress = property?.address_line2
+            ? `${property.address_line1}, ${property.address_line2}`
+            : property?.address_line1 || '';
+          const finalRentAmount = tenant.rent_amount || property?.monthly_rent || 0;
+
+          // Delay to ensure React has finished state updates
+          setTimeout(() => {
+            onGenerateRef.current({
+              landlordName: landlordNameRef.current,
+              tenantName: `${tenant.first_name} ${tenant.last_name}`,
+              propertyAddress: fullAddress,
+              city: property?.city || '',
+              state: property?.state || 'TX',
+              zip: property?.zip || '',
+              rentAmount: finalRentAmount,
+              lateFee: lateFee,
+              totalOwed: finalRentAmount + lateFee,
+              rentDueDate: initialRentDueDate || '',
+              noticeDate: new Date().toISOString().split('T')[0],
+              propertyId: tenant.property_id || undefined,
+              tenantId: tenant.id,
+            } as LateRentNoticeData & { propertyId?: string; tenantId?: string });
+          }, 300);
+        }
+      }
+    } else if (initialPropertyId) {
+      // Only property ID provided, select it
+      handlePropertyChange(initialPropertyId);
+    }
+  }, [loadingData, initialTenantId, initialPropertyId, initialRentDueDate, tenants, properties, leaseDocuments, autoGenerate]);
+
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Load properties and tenants in parallel
-    const [propertiesResult, tenantsResult, profileResult] = await Promise.all([
+    // Load properties, tenants, lease documents, and profile in parallel
+    const [propertiesResult, tenantsResult, leaseDocsResult, profileResult] = await Promise.all([
       supabase
         .from('properties')
         .select('id, address_line1, address_line2, city, state, zip, monthly_rent')
@@ -76,6 +202,12 @@ export function LateRentNoticeForm({ onGenerate, loading }: LateRentNoticeFormPr
         .eq('status', 'active')
         .order('last_name'),
       supabase
+        .from('documents')
+        .select('id, tenant_id, property_id, form_data')
+        .eq('user_id', user.id)
+        .eq('document_type', 'lease_agreement')
+        .order('created_at', { ascending: false }),
+      supabase
         .from('profiles')
         .select('full_name')
         .eq('id', user.id)
@@ -84,20 +216,43 @@ export function LateRentNoticeForm({ onGenerate, loading }: LateRentNoticeFormPr
 
     setProperties(propertiesResult.data || []);
     setTenants(tenantsResult.data || []);
-    setLoadingData(false);
+    setLeaseDocuments((leaseDocsResult.data || []) as LeaseDocument[]);
 
+    // Set landlord name BEFORE marking loading complete so it's available for auto-generation
     if (profileResult.data?.full_name) {
+      landlordNameRef.current = profileResult.data.full_name;
       setFormData(prev => ({
         ...prev,
         landlordName: profileResult.data.full_name,
       }));
     }
+
+    setLoadingData(false);
   }
 
   // Get tenants filtered by selected property
   const filteredTenants = selectedPropertyId
     ? tenants.filter(t => t.property_id === selectedPropertyId)
     : tenants;
+
+  // Get late fee from lease document for a given tenant/property
+  const getLateFeeFromLease = (tenantId: string | null, propertyId: string | null): number => {
+    // Try to find a lease for this specific tenant first
+    if (tenantId) {
+      const tenantLease = leaseDocuments.find(doc => doc.tenant_id === tenantId);
+      if (tenantLease?.form_data?.lateFeeAmount) {
+        return tenantLease.form_data.lateFeeAmount;
+      }
+    }
+    // Fall back to property-level lease
+    if (propertyId) {
+      const propertyLease = leaseDocuments.find(doc => doc.property_id === propertyId);
+      if (propertyLease?.form_data?.lateFeeAmount) {
+        return propertyLease.form_data.lateFeeAmount;
+      }
+    }
+    return 0;
+  };
 
   const handlePropertyChange = (propertyId: string) => {
     setSelectedPropertyId(propertyId);
@@ -150,11 +305,16 @@ export function LateRentNoticeForm({ onGenerate, loading }: LateRentNoticeFormPr
     const tenant = tenants.find(t => t.id === tenantId);
 
     if (tenant) {
+      // Get late fee from lease document
+      const lateFee = getLateFeeFromLease(tenant.id, tenant.property_id || currentPropertyId || null);
+      const rentAmount = tenant.rent_amount || 0;
+
       setFormData(prev => ({
         ...prev,
         tenantName: `${tenant.first_name} ${tenant.last_name}`,
-        rentAmount: tenant.rent_amount || prev.rentAmount,
-        totalOwed: (tenant.rent_amount || prev.rentAmount) + prev.lateFee,
+        rentAmount: rentAmount || prev.rentAmount,
+        lateFee: lateFee || prev.lateFee,
+        totalOwed: (rentAmount || prev.rentAmount) + (lateFee || prev.lateFee),
       }));
 
       // Auto-select property if tenant has one and no property currently selected

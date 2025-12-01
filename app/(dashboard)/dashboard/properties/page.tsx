@@ -38,6 +38,8 @@ interface Property {
 interface Tenant {
   id: string;
   property_id: string | null;
+  rent_amount: number | null;
+  status: string;
 }
 
 const propertyTypeLabels: Record<string, string> = {
@@ -113,7 +115,7 @@ export default function PropertiesPage() {
         .order('created_at', { ascending: false }),
       supabase
         .from('tenants')
-        .select('id, property_id')
+        .select('id, property_id, rent_amount, status')
         .eq('user_id', user.id),
     ]);
 
@@ -129,6 +131,30 @@ export default function PropertiesPage() {
 
   const getTenantCount = (propertyId: string) => {
     return tenants.filter(t => t.property_id === propertyId).length;
+  };
+
+  // Calculate collected rent from active tenants for a property
+  // Falls back to property's monthly_rent if tenant doesn't have rent_amount set
+  const getCollectedRent = (propertyId: string) => {
+    const property = properties.find(p => p.id === propertyId);
+    return tenants
+      .filter(t => t.property_id === propertyId && t.status === 'active')
+      .reduce((sum, t) => sum + (t.rent_amount || property?.monthly_rent || 0), 0);
+  };
+
+  // Calculate potential rent for a property
+  // Uses monthly_rent if set, otherwise estimates based on unit_count * average tenant rent
+  const getPotentialRent = (property: Property) => {
+    if (property.monthly_rent && property.monthly_rent > 0) {
+      return property.monthly_rent;
+    }
+    // Estimate based on tenants at this property
+    const propertyTenants = tenants.filter(t => t.property_id === property.id && t.rent_amount);
+    if (propertyTenants.length > 0) {
+      const avgRent = propertyTenants.reduce((sum, t) => sum + (t.rent_amount || 0), 0) / propertyTenants.length;
+      return avgRent * (property.unit_count || 1);
+    }
+    return 0;
   };
 
   const filteredProperties = properties.filter(property => {
@@ -305,46 +331,46 @@ export default function PropertiesPage() {
       )}
 
       {/* Stats Cards */}
-      <div className="grid md:grid-cols-3 gap-6 mb-8 -mt-6">
-        <Card className="border-2 border-cyan-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-cyan-50 rounded-lg">
-                <FiHome className="w-6 h-6 text-cyan-600" />
+      <div className="grid grid-cols-3 gap-3 mb-4 -mt-6">
+        <Card className="!border-cyan-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-cyan-50 rounded">
+                <FiHome className="w-4 h-4 text-cyan-600" />
               </div>
-              <div>
-                <p className="text-3xl font-bold text-cyan-600">{properties.length}</p>
-                <p className="text-sm text-muted-foreground">Total Properties</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 border-blue-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-blue-50 rounded-lg">
-                <FiUsers className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-3xl font-bold text-blue-600">{tenants.length}</p>
-                <p className="text-sm text-muted-foreground">Total Tenants</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-cyan-600">{properties.length}</p>
+                <p className="text-xs text-muted-foreground">Properties</p>
               </div>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="border-2 border-indigo-200">
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-indigo-50 rounded-lg">
-                <FiMapPin className="w-6 h-6 text-indigo-600" />
+        <Card className="!border-blue-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-50 rounded">
+                <FiUsers className="w-4 h-4 text-blue-600" />
               </div>
-              <div>
-                <p className="text-3xl font-bold text-indigo-600">
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-blue-600">{tenants.length}</p>
+                <p className="text-xs text-muted-foreground">Tenants</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-indigo-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-indigo-50 rounded">
+                <FiMapPin className="w-4 h-4 text-indigo-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-indigo-600">
                   {properties.reduce((sum, p) => sum + (p.unit_count || 1), 0)}
                 </p>
-                <p className="text-sm text-muted-foreground">Total Units</p>
+                <p className="text-xs text-muted-foreground">Units</p>
               </div>
             </div>
           </CardContent>
@@ -457,6 +483,8 @@ export default function PropertiesPage() {
               key={property.id}
               property={property}
               tenantCount={getTenantCount(property.id)}
+              collectedRent={getCollectedRent(property.id)}
+              potentialRent={getPotentialRent(property)}
               onDelete={() => handleDeleteProperty(property.id)}
             />
           ))}
@@ -514,11 +542,23 @@ export default function PropertiesPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        {property.monthly_rent ? (
-                          <span className="font-medium text-green-600">${property.monthly_rent.toLocaleString()}/mo</span>
-                        ) : (
-                          <span className="text-gray-400">-</span>
-                        )}
+                        {(() => {
+                          const collectedRent = getCollectedRent(property.id);
+                          const potentialRent = getPotentialRent(property);
+                          if (collectedRent > 0 || potentialRent > 0) {
+                            const isFullyCollected = collectedRent >= potentialRent && potentialRent > 0;
+                            return (
+                              <span className={`font-medium ${isFullyCollected ? 'text-green-600' : 'text-amber-600'}`}>
+                                ${collectedRent.toLocaleString()}
+                                {potentialRent > 0 && (
+                                  <span className="text-gray-400">/${potentialRent.toLocaleString()}</span>
+                                )}
+                                <span className="text-xs text-gray-400 ml-1">/mo</span>
+                              </span>
+                            );
+                          }
+                          return <span className="text-gray-400">-</span>;
+                        })()}
                       </td>
                       <td className="px-6 py-4 text-right">
                         <div className="flex items-center justify-end gap-2">
@@ -778,10 +818,14 @@ export default function PropertiesPage() {
 function PropertyCard({
   property,
   tenantCount,
+  collectedRent,
+  potentialRent,
   onDelete,
 }: {
   property: Property;
   tenantCount: number;
+  collectedRent: number;
+  potentialRent: number;
   onDelete: () => void;
 }) {
   return (
@@ -809,9 +853,17 @@ function PropertyCard({
                 {propertyTypeLabels[property.property_type] || property.property_type}
               </span>
             )}
-            {property.monthly_rent && (
-              <span className="text-xs px-2 py-1 rounded-full font-medium bg-green-100 text-green-700">
-                ${property.monthly_rent.toLocaleString()}/mo
+            {(collectedRent > 0 || potentialRent > 0) && (
+              <span className={`text-xs px-2 py-1 rounded-full font-medium ${
+                collectedRent >= potentialRent && potentialRent > 0
+                  ? 'bg-green-100 text-green-700'
+                  : 'bg-amber-100 text-amber-700'
+              }`}>
+                ${collectedRent.toLocaleString()}
+                {potentialRent > 0 && (
+                  <span className="opacity-70">/${potentialRent.toLocaleString()}</span>
+                )}
+                /mo
               </span>
             )}
           </div>

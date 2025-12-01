@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createAdminClient } from '@/lib/supabase/server';
 
 // GET - Fetch all images for a property
 export async function GET(
@@ -9,14 +9,15 @@ export async function GET(
   try {
     const { id: propertyId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify property belongs to user
-    const { data: property, error: propertyError } = await supabase
+    // Verify property belongs to user (using admin client to bypass RLS)
+    const { data: property, error: propertyError } = await adminClient
       .from('properties')
       .select('id')
       .eq('id', propertyId)
@@ -27,8 +28,8 @@ export async function GET(
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
-    // Fetch images
-    const { data: images, error: imagesError } = await supabase
+    // Fetch images (using admin client to bypass RLS)
+    const { data: images, error: imagesError } = await adminClient
       .from('property_images')
       .select('*')
       .eq('property_id', propertyId)
@@ -54,14 +55,15 @@ export async function POST(
   try {
     const { id: propertyId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify property belongs to user
-    const { data: property, error: propertyError } = await supabase
+    // Verify property belongs to user (using admin client)
+    const { data: property, error: propertyError } = await adminClient
       .from('properties')
       .select('id')
       .eq('id', propertyId)
@@ -79,8 +81,8 @@ export async function POST(
       return NextResponse.json({ error: 'Image URL is required' }, { status: 400 });
     }
 
-    // Get the current highest display_order
-    const { data: existingImages } = await supabase
+    // Get the current highest display_order (using admin client)
+    const { data: existingImages } = await adminClient
       .from('property_images')
       .select('display_order')
       .eq('property_id', propertyId)
@@ -91,16 +93,16 @@ export async function POST(
       ? (existingImages[0].display_order || 0) + 1
       : 0;
 
-    // If this is the first image, make it primary by default
-    const { count } = await supabase
+    // If this is the first image, make it primary by default (using admin client)
+    const { count } = await adminClient
       .from('property_images')
       .select('*', { count: 'exact', head: true })
       .eq('property_id', propertyId);
 
     const shouldBePrimary = is_primary || count === 0;
 
-    // Insert the new image
-    const { data: newImage, error: insertError } = await supabase
+    // Insert the new image (using admin client)
+    const { data: newImage, error: insertError } = await adminClient
       .from('property_images')
       .insert({
         property_id: propertyId,
@@ -132,14 +134,15 @@ export async function PATCH(
   try {
     const { id: propertyId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify property belongs to user
-    const { data: property, error: propertyError } = await supabase
+    // Verify property belongs to user (using admin client)
+    const { data: property, error: propertyError } = await adminClient
       .from('properties')
       .select('id')
       .eq('id', propertyId)
@@ -151,7 +154,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { image_id, caption, display_order, is_primary } = body;
+    const { image_id, caption, display_order, is_primary, focal_x, focal_y } = body;
 
     if (!image_id) {
       return NextResponse.json({ error: 'Image ID is required' }, { status: 400 });
@@ -161,8 +164,10 @@ export async function PATCH(
     if (caption !== undefined) updates.caption = caption;
     if (display_order !== undefined) updates.display_order = display_order;
     if (is_primary !== undefined) updates.is_primary = is_primary;
+    if (focal_x !== undefined) updates.focal_x = Math.max(0, Math.min(100, focal_x));
+    if (focal_y !== undefined) updates.focal_y = Math.max(0, Math.min(100, focal_y));
 
-    const { data: updatedImage, error: updateError } = await supabase
+    const { data: updatedImage, error: updateError } = await adminClient
       .from('property_images')
       .update(updates)
       .eq('id', image_id)
@@ -190,14 +195,15 @@ export async function DELETE(
   try {
     const { id: propertyId } = await params;
     const supabase = await createClient();
+    const adminClient = createAdminClient();
 
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Verify property belongs to user
-    const { data: property, error: propertyError } = await supabase
+    // Verify property belongs to user (using admin client)
+    const { data: property, error: propertyError } = await adminClient
       .from('properties')
       .select('id')
       .eq('id', propertyId)
@@ -215,8 +221,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Image ID is required' }, { status: 400 });
     }
 
-    // Get the image to delete (to get its URL for storage cleanup)
-    const { data: imageToDelete } = await supabase
+    // Get the image to delete (to get its URL for storage cleanup) - using admin client
+    const { data: imageToDelete } = await adminClient
       .from('property_images')
       .select('*')
       .eq('id', imageId)
@@ -227,8 +233,8 @@ export async function DELETE(
       return NextResponse.json({ error: 'Image not found' }, { status: 404 });
     }
 
-    // Delete from database
-    const { error: deleteError } = await supabase
+    // Delete from database (using admin client)
+    const { error: deleteError } = await adminClient
       .from('property_images')
       .delete()
       .eq('id', imageId)
@@ -250,9 +256,9 @@ export async function DELETE(
       console.error('Error deleting from storage (non-fatal):', storageError);
     }
 
-    // If deleted image was primary, set another one as primary
+    // If deleted image was primary, set another one as primary (using admin client)
     if (imageToDelete.is_primary) {
-      const { data: remainingImages } = await supabase
+      const { data: remainingImages } = await adminClient
         .from('property_images')
         .select('id')
         .eq('property_id', propertyId)
@@ -260,7 +266,7 @@ export async function DELETE(
         .limit(1);
 
       if (remainingImages && remainingImages.length > 0) {
-        await supabase
+        await adminClient
           .from('property_images')
           .update({ is_primary: true })
           .eq('id', remainingImages[0].id);

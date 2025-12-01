@@ -84,6 +84,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       security_deposit,
       status,
       notes,
+      unit_number,
       // Screening fields
       date_of_birth,
       ssn_last_four,
@@ -138,6 +139,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     if (security_deposit !== undefined) updateData.security_deposit = security_deposit;
     if (status !== undefined) updateData.status = status;
     if (notes !== undefined) updateData.notes = notes || null;
+    if (unit_number !== undefined) updateData.unit_number = unit_number || null;
 
     // Screening fields
     if (date_of_birth !== undefined) updateData.date_of_birth = date_of_birth || null;

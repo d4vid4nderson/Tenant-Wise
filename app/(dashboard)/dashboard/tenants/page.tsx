@@ -12,6 +12,7 @@ interface Property {
   address_line1: string;
   city: string;
   state: string;
+  monthly_rent: number | null;
 }
 
 interface Tenant {
@@ -72,29 +73,37 @@ export default function TenantsPage() {
   // Auto-open add modal when property param is provided
   useEffect(() => {
     if (prefilledPropertyId && !loading && !hasOpenedModal) {
-      setNewTenant(prev => ({ ...prev, property_id: prefilledPropertyId }));
+      // Find the property to get its monthly_rent for auto-fill
+      const selectedProperty = properties.find(p => p.id === prefilledPropertyId);
+      const rentAmount = selectedProperty?.monthly_rent?.toString() || '';
+      setNewTenant(prev => ({
+        ...prev,
+        property_id: prefilledPropertyId,
+        rent_amount: rentAmount,
+        security_deposit: rentAmount, // Security deposit = monthly rent
+      }));
       setShowAddModal(true);
       setHasOpenedModal(true);
     }
-  }, [prefilledPropertyId, loading, hasOpenedModal]);
+  }, [prefilledPropertyId, loading, hasOpenedModal, properties]);
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // Load tenants with property info
+    // Load tenants with property info (including monthly_rent for fallback)
     const { data: tenantsData } = await supabase
       .from('tenants')
-      .select('*, property:properties(id, address_line1, city, state)')
+      .select('*, property:properties(id, address_line1, city, state, monthly_rent)')
       .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     setTenants(tenantsData || []);
 
-    // Load properties for filter/add modal
+    // Load properties for filter/add modal (including monthly_rent for auto-fill)
     const { data: propertiesData } = await supabase
       .from('properties')
-      .select('id, address_line1, city, state')
+      .select('id, address_line1, city, state, monthly_rent')
       .eq('user_id', user.id)
       .order('address_line1');
 
@@ -189,6 +198,67 @@ export default function TenantsPage() {
         </div>
       </div>
 
+      {/* Stats Cards - Compact style matching dashboard */}
+      <div className="grid grid-cols-4 gap-3 mb-6 -mt-6">
+        <Card className="!border-blue-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-50 rounded">
+                <FiUsers className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-blue-600">{tenants.length}</p>
+                <p className="text-xs text-muted-foreground">Tenants</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-green-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-green-50 rounded">
+                <FiUsers className="w-4 h-4 text-green-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-green-600">{tenants.filter(t => t.status === 'active').length}</p>
+                <p className="text-xs text-muted-foreground">Active</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-yellow-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-yellow-50 rounded">
+                <FiCalendar className="w-4 h-4 text-yellow-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-yellow-600">{tenants.filter(t => t.application_status === 'pending').length}</p>
+                <p className="text-xs text-muted-foreground">Pending</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-emerald-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-emerald-50 rounded">
+                <FiHome className="w-4 h-4 text-emerald-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-emerald-600">
+                  ${tenants.filter(t => t.status === 'active').reduce((sum, t) => sum + (t.rent_amount || t.property?.monthly_rent || 0), 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground">/mo</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Message */}
       {message && (
         <div className={`mb-6 p-4 rounded-lg ${message.type === 'success' ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
@@ -196,9 +266,9 @@ export default function TenantsPage() {
         </div>
       )}
 
-      {/* Filters */}
+      {/* Search and Filters */}
       <Card className="mb-6">
-        <CardContent className="pt-6">
+        <CardContent className="p-4">
           <div className="flex flex-wrap gap-4">
             <div className="flex-1 min-w-[200px]">
               <div className="relative">
@@ -237,36 +307,6 @@ export default function TenantsPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-blue-600">{tenants.length}</p>
-            <p className="text-sm text-muted-foreground">Total Tenants</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-green-600">{tenants.filter(t => t.status === 'active').length}</p>
-            <p className="text-sm text-muted-foreground">Active</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-yellow-600">{tenants.filter(t => t.application_status === 'pending').length}</p>
-            <p className="text-sm text-muted-foreground">Pending Approval</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6 text-center">
-            <p className="text-3xl font-bold text-green-600">
-              ${tenants.filter(t => t.status === 'active').reduce((sum, t) => sum + (t.rent_amount || 0), 0).toLocaleString()}
-            </p>
-            <p className="text-sm text-muted-foreground">Monthly Income</p>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Tenant List */}
       {filteredTenants.length === 0 ? (
@@ -330,8 +370,10 @@ export default function TenantsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-4">
-                      {tenant.rent_amount && (
-                        <p className="font-semibold text-green-600">${tenant.rent_amount.toLocaleString()}/mo</p>
+                      {(tenant.rent_amount || tenant.property?.monthly_rent) && (
+                        <p className="font-semibold text-green-600">
+                          ${(tenant.rent_amount || tenant.property?.monthly_rent || 0).toLocaleString()}/mo
+                        </p>
                       )}
                       <span className={`px-3 py-1 rounded-full text-sm font-medium ${statusColors[tenant.status] || statusColors.past}`}>
                         {tenant.status}
@@ -400,13 +442,24 @@ export default function TenantsPage() {
                 <label className="block text-sm font-medium mb-2">Property</label>
                 <select
                   value={newTenant.property_id}
-                  onChange={(e) => setNewTenant({ ...newTenant, property_id: e.target.value })}
+                  onChange={(e) => {
+                    const selectedProperty = properties.find(p => p.id === e.target.value);
+                    // Auto-fill rent and security deposit from property's monthly_rent
+                    const rentAmount = selectedProperty?.monthly_rent?.toString() || newTenant.rent_amount;
+                    const securityDeposit = selectedProperty?.monthly_rent?.toString() || newTenant.security_deposit;
+                    setNewTenant({
+                      ...newTenant,
+                      property_id: e.target.value,
+                      rent_amount: rentAmount,
+                      security_deposit: securityDeposit,
+                    });
+                  }}
                   className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Select property...</option>
                   {properties.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.address_line1}, {p.city}
+                      {p.address_line1}, {p.city}{p.monthly_rent ? ` - $${p.monthly_rent.toLocaleString()}/mo` : ''}
                     </option>
                   ))}
                 </select>

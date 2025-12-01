@@ -367,56 +367,59 @@ export default function ContractorsPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 -mt-6">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
-                <FiTool className="w-5 h-5 text-orange-600" />
+      {/* Stats Cards - Compact style matching other pages */}
+      <div className="grid grid-cols-4 gap-3 mb-6 -mt-6">
+        <Card className="!border-orange-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-orange-50 rounded">
+                <FiTool className="w-4 h-4 text-orange-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{contractors.length}</p>
-                <p className="text-sm text-muted-foreground">Contractors</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <FiClock className="w-5 h-5 text-yellow-600" />
-              </div>
-              <div>
-                <p className="text-2xl font-bold">${unpaidTotal.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground">Unpaid</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-orange-600">{contractors.length}</p>
+                <p className="text-xs text-muted-foreground">Contractors</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center">
-                <FiCheck className="w-5 h-5 text-green-600" />
+
+        <Card className="!border-yellow-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-yellow-50 rounded">
+                <FiClock className="w-4 h-4 text-yellow-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">${paidTotal.toLocaleString()}</p>
-                <p className="text-sm text-muted-foreground">Paid</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-yellow-600">${unpaidTotal.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Unpaid</p>
               </div>
             </div>
           </CardContent>
         </Card>
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                <FiFileText className="w-5 h-5 text-blue-600" />
+
+        <Card className="!border-green-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-green-50 rounded">
+                <FiCheck className="w-4 h-4 text-green-600" />
               </div>
-              <div>
-                <p className="text-2xl font-bold">{invoices.length}</p>
-                <p className="text-sm text-muted-foreground">Total Invoices</p>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-green-600">${paidTotal.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">Paid</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="!border-blue-200">
+          <CardContent className="py-2 px-3">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-blue-50 rounded">
+                <FiFileText className="w-4 h-4 text-blue-600" />
+              </div>
+              <div className="flex items-baseline gap-1.5">
+                <p className="text-xl font-bold text-blue-600">{invoices.length}</p>
+                <p className="text-xs text-muted-foreground">Invoices</p>
               </div>
             </div>
           </CardContent>

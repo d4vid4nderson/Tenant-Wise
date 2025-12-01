@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { FiHome, FiMapPin, FiUsers, FiExternalLink, FiAlertCircle, FiMaximize2 } from 'react-icons/fi';
 
+// Import mapbox CSS at module level
+import 'mapbox-gl/dist/mapbox-gl.css';
+
 interface Property {
   id: string;
   address_line1: string;
@@ -99,30 +102,45 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
   // Load mapbox-gl dynamically
   useEffect(() => {
-    if (typeof window === 'undefined' || !MAPBOX_TOKEN) return;
+    if (typeof window === 'undefined') return;
+
+    if (!MAPBOX_TOKEN) {
+      console.error('PropertyMap: MAPBOX_TOKEN is not set');
+      return;
+    }
+
+    console.log('PropertyMap: Initializing map with token:', MAPBOX_TOKEN.substring(0, 10) + '...');
 
     const loadMap = async () => {
-      const mapboxgl = (await import('mapbox-gl')).default;
-      // @ts-expect-error mapbox-gl CSS has no type declarations
-      await import('mapbox-gl/dist/mapbox-gl.css');
+      try {
+        const mapboxgl = (await import('mapbox-gl')).default;
 
-      mapboxgl.accessToken = MAPBOX_TOKEN;
+        mapboxgl.accessToken = MAPBOX_TOKEN;
 
-      if (mapContainerRef.current && !mapRef.current) {
-        const map = new mapboxgl.Map({
-          container: mapContainerRef.current,
-          style: process.env.NEXT_PUBLIC_MAPBOX_STYLE || 'mapbox://styles/david4nderson/cmikggsgv006w01qt6zok80ay',
-          center: [-100.0, 31.0], // Texas center
-          zoom: 5,
-        });
+        if (mapContainerRef.current && !mapRef.current) {
+          console.log('PropertyMap: Creating map instance');
+          const map = new mapboxgl.Map({
+            container: mapContainerRef.current,
+            style: process.env.NEXT_PUBLIC_MAPBOX_STYLE || 'mapbox://styles/david4nderson/cmikggsgv006w01qt6zok80ay',
+            center: [-100.0, 31.0], // Texas center
+            zoom: 5,
+          });
 
-        map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+          map.addControl(new mapboxgl.NavigationControl(), 'top-right');
 
-        mapRef.current = map;
+          mapRef.current = map;
 
-        map.on('load', () => {
-          setMapLoaded(true);
-        });
+          map.on('load', () => {
+            console.log('PropertyMap: Map loaded successfully');
+            setMapLoaded(true);
+          });
+
+          map.on('error', (e) => {
+            console.error('PropertyMap: Map error:', e);
+          });
+        }
+      } catch (error) {
+        console.error('PropertyMap: Failed to load map:', error);
       }
     };
 
@@ -134,7 +152,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [loading]); // Re-run when loading changes so container is available
 
   // Geocode properties
   useEffect(() => {
@@ -248,7 +266,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
   if (!MAPBOX_TOKEN) {
     return (
-      <div className="h-[500px] bg-gray-100 rounded-xl flex items-center justify-center">
+      <div className="h-[calc(100vh-340px)] bg-gray-100 rounded-xl flex items-center justify-center">
         <div className="text-center p-6">
           <FiAlertCircle className="w-12 h-12 text-amber-500 mx-auto mb-4" />
           <h3 className="font-semibold text-lg mb-2">Mapbox not configured</h3>
@@ -262,7 +280,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
   if (loading) {
     return (
-      <div className="h-[500px] bg-gray-100 rounded-xl flex items-center justify-center">
+      <div className="h-[calc(100vh-340px)] bg-gray-100 rounded-xl flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-2"></div>
           <p className="text-muted-foreground">Locating {properties.length} properties...</p>
@@ -273,7 +291,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
   if (markers.length === 0 && properties.length === 0) {
     return (
-      <div className="h-[500px] bg-gray-100 rounded-xl flex items-center justify-center">
+      <div className="h-[calc(100vh-340px)] bg-gray-100 rounded-xl flex items-center justify-center">
         <div className="text-center">
           <FiMapPin className="w-12 h-12 text-gray-300 mx-auto mb-4" />
           <p className="text-muted-foreground">No properties to display on the map</p>
@@ -284,7 +302,7 @@ export default function PropertyMap({ properties, tenantCounts }: PropertyMapPro
 
   return (
     <div className="space-y-4">
-      <div className="relative h-[500px] rounded-xl overflow-hidden border border-gray-200 shadow-lg">
+      <div className="relative h-[calc(100vh-340px)] rounded-xl overflow-hidden border border-gray-200 shadow-lg">
         <div ref={mapContainerRef} className="w-full h-full" />
 
         {/* Recenter Button */}

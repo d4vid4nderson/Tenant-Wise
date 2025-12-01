@@ -1,8 +1,12 @@
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
-import { FiFileText, FiHome, FiUsers, FiPlus, FiArrowRight, FiAward, FiMap } from 'react-icons/fi';
-import DashboardMap from '@/components/DashboardMap';
+import { UrgentItemsCard } from '@/components/UrgentItemsCard';
+import { ExpiringLeasesCard } from '@/components/ExpiringLeasesCard';
+import { FiFileText, FiHome, FiUsers, FiPlus, FiArrowRight, FiAward, FiAlertCircle, FiClock, FiDollarSign, FiCheckCircle } from 'react-icons/fi';
+
+// Force dynamic rendering to always fetch fresh data
+export const dynamic = 'force-dynamic';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -45,6 +49,90 @@ export default async function DashboardPage() {
     .eq('user_id', user?.id)
     .eq('status', 'active');
 
+  // Fetch tenants with full data for upcoming items
+  const { data: activeTenants } = await supabase
+    .from('tenants')
+    .select('id, first_name, last_name, rent_amount, lease_end, property_id, unit_number, status, email')
+    .eq('user_id', user?.id)
+    .eq('status', 'active');
+
+  // Fetch late rent documents for current month to track status
+  const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
+  const { data: lateRentDocs } = await supabase
+    .from('documents')
+    .select('id, title, tenant_id, signature_request_id, signature_status, created_at')
+    .eq('user_id', user?.id)
+    .eq('document_type', 'late_rent')
+    .gte('created_at', startOfMonth);
+
+  // Fetch lease renewal documents for tracking
+  const { data: renewalDocs } = await supabase
+    .from('documents')
+    .select('id, title, tenant_id, signature_request_id, signature_status, created_at')
+    .eq('user_id', user?.id)
+    .eq('document_type', 'lease_renewal')
+    .gte('created_at', startOfMonth);
+
+  // Build lookup maps for document status by tenant
+  const lateRentDocsByTenant: Record<string, { id: string; sent: boolean; status: string | null; title: string }> = {};
+  lateRentDocs?.forEach(doc => {
+    if (doc.tenant_id) {
+      lateRentDocsByTenant[doc.tenant_id] = {
+        id: doc.id,
+        sent: !!doc.signature_request_id,
+        status: doc.signature_status,
+        title: doc.title,
+      };
+    }
+  });
+
+  const renewalDocsByTenant: Record<string, { id: string; sent: boolean; status: string | null; title: string }> = {};
+  renewalDocs?.forEach(doc => {
+    if (doc.tenant_id) {
+      renewalDocsByTenant[doc.tenant_id] = {
+        id: doc.id,
+        sent: !!doc.signature_request_id,
+        status: doc.signature_status,
+        title: doc.title,
+      };
+    }
+  });
+
+  // Calculate upcoming items
+  const today = new Date();
+  const currentDay = today.getDate();
+  const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+
+  // Get upcoming rent due (tenants with rent, due on 1st of month)
+  const rentDueSoon = activeTenants?.filter(t => {
+    if (!t.rent_amount) return false;
+    // If we're past the 15th, show next month's rent as upcoming
+    // If we're in the first 15 days, rent is currently due
+    return currentDay >= 25 || currentDay <= 5;
+  }) || [];
+
+  // Late rent: If past the 5th and tenant has rent
+  const lateRent = activeTenants?.filter(t => {
+    if (!t.rent_amount) return false;
+    return currentDay > 5;
+  }) || [];
+
+  // Lease expirations: leases ending within 60 days
+  const sixtyDaysFromNow = new Date(today);
+  sixtyDaysFromNow.setDate(sixtyDaysFromNow.getDate() + 60);
+
+  const expiringLeases = activeTenants?.filter(t => {
+    if (!t.lease_end) return false;
+    const leaseEnd = new Date(t.lease_end);
+    return leaseEnd >= today && leaseEnd <= sixtyDaysFromNow;
+  }).sort((a, b) => new Date(a.lease_end!).getTime() - new Date(b.lease_end!).getTime()) || [];
+
+  // Build property lookup for names
+  const propertyLookup: Record<string, string> = {};
+  properties?.forEach(p => {
+    propertyLookup[p.id] = p.address_line1;
+  });
+
   // Build tenant count map
   const tenantCounts: Record<string, number> = {};
   tenantsByProperty?.forEach(t => {
@@ -52,6 +140,32 @@ export default async function DashboardPage() {
       tenantCounts[t.property_id] = (tenantCounts[t.property_id] || 0) + 1;
     }
   });
+
+  // Calculate total late rent amount
+  const totalLateRent = lateRent.reduce((sum, t) => sum + (t.rent_amount || 0), 0);
+
+  // Calculate rent collected vs expected per property
+  const propertyRentStatus = properties?.map(property => {
+    const propertyTenants = activeTenants?.filter(t => t.property_id === property.id) || [];
+    // Use tenant's rent_amount if set, otherwise fall back to property's monthly_rent
+    const collectedRent = propertyTenants.reduce((sum, t) => sum + (t.rent_amount || property.monthly_rent || 0), 0);
+    const expectedRent = property.monthly_rent
+      ? property.monthly_rent * (property.unit_count || 1)
+      : (propertyTenants.length > 0 ? propertyTenants[0].rent_amount! * (property.unit_count || 1) : 0);
+    const hasLateRent = currentDay > 5 && collectedRent < expectedRent;
+
+    return {
+      ...property,
+      collectedRent,
+      expectedRent,
+      hasLateRent,
+      tenants: propertyTenants,
+    };
+  }) || [];
+
+  // Calculate totals
+  const totalCollected = propertyRentStatus.reduce((sum, p) => sum + p.collectedRent, 0);
+  const totalExpected = propertyRentStatus.reduce((sum, p) => sum + p.expectedRent, 0);
 
   const subscriptionTier = profile?.subscription_tier || 'free';
   const documentsRemaining = subscriptionTier === 'free'
@@ -120,100 +234,185 @@ export default async function DashboardPage() {
         />
       </div>
 
-      {/* Main Content: Map (3/4) + Quick Actions (1/4) */}
-      <div className="grid lg:grid-cols-4 gap-6 items-stretch">
-        {/* Portfolio Map - Takes up 3/4 */}
-        <div className="lg:col-span-3">
-          <Card className="h-full flex flex-col">
-            <CardHeader className="pb-2 flex-shrink-0">
+      {/* Main Content: Action-Focused Layout */}
+      <div className="grid lg:grid-cols-3 gap-6">
+        {/* Left Column: Urgent Actions */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Urgent Actions Card */}
+          <UrgentItemsCard
+            lateRent={lateRent}
+            totalLateRent={totalLateRent}
+            propertyLookup={propertyLookup}
+            properties={properties || []}
+            landlordName={profile?.full_name || ''}
+            lateRentDocsByTenant={lateRentDocsByTenant}
+            today={today}
+          />
+
+          {/* This Month's Rent Table */}
+          <Card>
+            <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="flex items-center gap-2">
-                  <FiMap className="w-5 h-5 text-blue-600" />
-                  Portfolio Map
+                  <FiDollarSign className="w-5 h-5 text-green-600" />
+                  This Month&apos;s Rent
                 </CardTitle>
-                <Link
-                  href="/dashboard/properties"
-                  className="text-sm text-blue-600 hover:text-blue-700 flex items-center gap-1"
-                >
-                  View All Properties
-                  <FiArrowRight className="w-4 h-4" />
-                </Link>
+                <div className="text-right">
+                  <p className="text-lg font-bold">
+                    <span className={totalCollected >= totalExpected ? 'text-green-600' : 'text-amber-600'}>
+                      ${totalCollected.toLocaleString()}
+                    </span>
+                    <span className="text-gray-400 font-normal"> / ${totalExpected.toLocaleString()}</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0}% collected
+                  </p>
+                </div>
               </div>
             </CardHeader>
-            <CardContent className="flex-1 pb-4">
-              <div className="h-full min-h-[400px]">
-                <DashboardMap
-                  properties={properties || []}
-                  tenantCounts={tenantCounts}
-                />
-              </div>
+            <CardContent>
+              {propertyRentStatus.length > 0 ? (
+                <div className="space-y-2">
+                  {propertyRentStatus.map(property => (
+                    <Link
+                      key={property.id}
+                      href={`/dashboard/properties/${property.id}`}
+                      className="flex items-center justify-between p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-sm truncate">{property.address_line1}</p>
+                        <p className="text-xs text-muted-foreground">{property.city}, {property.state}</p>
+                      </div>
+                      <div className="flex items-center gap-4 ml-4">
+                        <div className="text-right">
+                          <p className="font-medium text-sm">${property.collectedRent.toLocaleString()}</p>
+                          <p className="text-xs text-muted-foreground">of ${property.expectedRent.toLocaleString()}</p>
+                        </div>
+                        {property.collectedRent >= property.expectedRent && property.expectedRent > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium">
+                            <FiCheckCircle className="w-3 h-3" />
+                            Paid
+                          </span>
+                        ) : property.hasLateRent ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded-full text-xs font-medium">
+                            <FiAlertCircle className="w-3 h-3" />
+                            Late
+                          </span>
+                        ) : property.expectedRent === 0 ? (
+                          <span className="text-xs text-muted-foreground">No tenants</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-medium">
+                            <FiClock className="w-3 h-3" />
+                            Pending
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No properties yet</p>
+                  <Link href="/dashboard/properties" className="text-blue-600 hover:underline text-sm">
+                    Add your first property
+                  </Link>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Quick Actions Sidebar - Takes up 1/4 */}
-        <div className="flex flex-col gap-6">
-          {/* Create Documents */}
+        {/* Right Column: Upcoming & Quick Actions */}
+        <div className="space-y-6">
+          {/* Upcoming Card */}
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FiFileText className="w-5 h-5 text-cyan-600" />
-                Quick Actions
+            <CardHeader className="pb-3">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <FiClock className="w-5 h-5 text-amber-600" />
+                Upcoming
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              <QuickActionButton
-                href="/dashboard/documents/new?type=late_rent"
-                label="Late Rent Notice"
-                description="Texas-compliant 3-day notice"
+            <CardContent className="space-y-4">
+              {/* Rent Due Soon */}
+              {rentDueSoon.length > 0 && currentDay >= 25 && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-amber-600 flex items-center gap-2">
+                    <FiDollarSign className="w-4 h-4" />
+                    Rent Due on 1st ({rentDueSoon.length})
+                  </p>
+                  <div className="space-y-2">
+                    {rentDueSoon.slice(0, 3).map(tenant => (
+                      <div key={tenant.id} className="p-2 bg-amber-50 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-xs">{tenant.first_name} {tenant.last_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {tenant.property_id ? propertyLookup[tenant.property_id] : ''}
+                            </p>
+                          </div>
+                          <p className="font-semibold text-amber-600 text-sm">${tenant.rent_amount?.toLocaleString()}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Expiring Leases */}
+              <ExpiringLeasesCard
+                expiringLeases={expiringLeases}
+                propertyLookup={propertyLookup}
+                properties={properties || []}
+                landlordName={profile?.full_name || ''}
+                renewalDocsByTenant={renewalDocsByTenant}
+                today={today}
               />
-              <QuickActionButton
-                href="/dashboard/documents/new?type=lease_renewal"
-                label="Lease Renewal"
-                description="Generate renewal offer"
-              />
-              <QuickActionButton
-                href="/dashboard/documents/new?type=deposit_return"
-                label="Deposit Return"
-                description="Itemized deposit letter"
-              />
-              <QuickActionButton
-                href="/dashboard/documents/new?type=maintenance"
-                label="Maintenance Response"
-                description="Acknowledge repair requests"
-              />
+
+              {/* Empty state */}
+              {(currentDay < 25 || rentDueSoon.length === 0) && expiringLeases.length === 0 && lateRent.length === 0 && (
+                <div className="text-center py-6">
+                  <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FiCheckCircle className="w-6 h-6 text-green-500" />
+                  </div>
+                  <p className="text-sm font-medium text-green-600">All caught up!</p>
+                  <p className="text-xs text-muted-foreground mt-1">No upcoming items</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
           {/* Quick Add */}
-          <Card className="flex-1 flex flex-col">
-            <CardHeader>
-              <CardTitle className="text-sm">Add New</CardTitle>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Quick Add</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-2 flex-1">
+            <CardContent className="space-y-2">
               <Link
                 href="/dashboard/properties"
-                className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-3 p-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <FiHome className="w-4 h-4 text-blue-600" />
+                <div className="p-1.5 bg-blue-100 rounded-lg">
+                  <FiHome className="w-3.5 h-3.5 text-blue-600" />
                 </div>
-                <div>
-                  <p className="font-medium text-sm">Add Property</p>
-                  <p className="text-xs text-muted-foreground">Add a new rental property</p>
-                </div>
+                <p className="font-medium text-sm">Add Property</p>
               </Link>
               <Link
                 href="/dashboard/tenants"
-                className="flex items-center gap-3 p-3 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+                className="flex items-center gap-3 p-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
               >
-                <div className="p-2 bg-indigo-100 rounded-lg">
-                  <FiUsers className="w-4 h-4 text-indigo-600" />
+                <div className="p-1.5 bg-indigo-100 rounded-lg">
+                  <FiUsers className="w-3.5 h-3.5 text-indigo-600" />
                 </div>
-                <div>
-                  <p className="font-medium text-sm">Add Tenant</p>
-                  <p className="text-xs text-muted-foreground">Add a new tenant profile</p>
+                <p className="font-medium text-sm">Add Tenant</p>
+              </Link>
+              <Link
+                href="/dashboard/documents/new"
+                className="flex items-center gap-3 p-2 bg-gray-50 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <div className="p-1.5 bg-cyan-100 rounded-lg">
+                  <FiFileText className="w-3.5 h-3.5 text-cyan-600" />
                 </div>
+                <p className="font-medium text-sm">Create Document</p>
               </Link>
             </CardContent>
           </Card>
@@ -244,22 +443,22 @@ function StatCard({
 }) {
   const colorStyles = {
     cyan: {
-      border: 'border-cyan-200 hover:border-cyan-400',
-      icon: 'text-cyan-500 bg-cyan-50',
+      border: '!border-cyan-200 hover:!border-cyan-400',
+      icon: 'text-cyan-600 bg-cyan-50',
       accent: 'text-cyan-600'
     },
     blue: {
-      border: 'border-blue-200 hover:border-blue-400',
-      icon: 'text-blue-500 bg-blue-50',
+      border: '!border-blue-200 hover:!border-blue-400',
+      icon: 'text-blue-600 bg-blue-50',
       accent: 'text-blue-600'
     },
     indigo: {
-      border: 'border-indigo-200 hover:border-indigo-400',
-      icon: 'text-indigo-500 bg-indigo-50',
+      border: '!border-indigo-200 hover:!border-indigo-400',
+      icon: 'text-indigo-600 bg-indigo-50',
       accent: 'text-indigo-600'
     },
     gradient: {
-      border: 'border-transparent',
+      border: '!border-transparent',
       icon: 'text-white',
       accent: 'text-white'
     }
@@ -267,24 +466,23 @@ function StatCard({
 
   const styles = colorStyles[color];
 
+  // Subscription tier cards - compact design
   if (color === 'gradient' && subscriptionTier && tierDisplay) {
     if (subscriptionTier === 'pro') {
       return (
         <Link href={href}>
-          <div className="relative bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl p-[2px] shadow-xl hover:shadow-2xl transition-all cursor-pointer h-full group overflow-hidden">
+          <div className="relative bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl shadow-lg hover:shadow-xl transition-all cursor-pointer h-full group overflow-hidden">
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
-            <div className="bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl p-6 h-full flex flex-col relative">
-              <div className="flex items-center justify-between">
-                <div className="p-2 bg-white/20 rounded-lg text-white">{icon}</div>
-                <span className="px-4 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-amber-400 via-yellow-400 to-orange-500 text-white shadow-lg flex items-center gap-1.5">
-                  <FiAward className="w-3.5 h-3.5" />
-                  {tierDisplay.label}
-                </span>
+            <div className="py-2 px-3 h-full flex items-center gap-2 relative">
+              <div className="p-1.5 bg-white/20 rounded">
+                <FiFileText className="w-4 h-4 text-white" />
               </div>
-              <div className="mt-4 flex-1 flex flex-col justify-end">
-                <p className="text-sm font-semibold text-white">Unlimited Properties & Tenants</p>
-                <p className="text-xs text-blue-100 mt-1">ACH Rent Collection + Priority Support</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-bold text-white">Pro Plan</p>
               </div>
+              <span className="p-1.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow">
+                <FiAward className="w-4 h-4" />
+              </span>
             </div>
           </div>
         </Link>
@@ -292,36 +490,39 @@ function StatCard({
     } else if (subscriptionTier === 'basic') {
       return (
         <Link href={href}>
-          <div className="bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl p-[2px] shadow-lg hover:shadow-xl transition-shadow cursor-pointer h-full">
-            <div className="bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl p-6 h-full flex flex-col">
-              <div className="flex items-center justify-between">
-                <div className="p-2 bg-white/20 rounded-lg text-white">{icon}</div>
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${tierDisplay.badge}`}>
-                  {tierDisplay.label}
-                </span>
+          <div className="bg-gradient-to-br from-cyan-500 via-blue-500 to-indigo-500 rounded-xl shadow-lg hover:shadow-xl transition-shadow cursor-pointer h-full">
+            <div className="py-2 px-3 h-full flex items-center gap-2">
+              <div className="p-1.5 bg-white/20 rounded">
+                <FiFileText className="w-4 h-4 text-white" />
               </div>
-              <div className="mt-4 flex-1 flex flex-col justify-end">
-                <p className="text-sm font-semibold text-white">Unlimited Docs + Legal AI</p>
-                <p className="text-xs text-blue-100">1 Property, 1 Tenant</p>
+              <div className="flex-1 min-w-0">
+                <p className="text-lg font-bold text-white">Basic Plan</p>
               </div>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 text-white flex items-center gap-1">
+                <FiAward className="w-3 h-3 text-blue-200" />
+                Basic
+              </span>
             </div>
           </div>
         </Link>
       );
     } else {
+      // Free tier
       return (
         <Link href={href}>
-          <Card className="border-2 border-gray-200 hover:border-gray-400 transition-all cursor-pointer hover:shadow-md h-full">
-            <CardContent className="pt-6 h-full flex flex-col">
-              <div className="flex items-center justify-between">
-                <div className="p-2 rounded-lg text-gray-500 bg-gray-50">{icon}</div>
-                <span className="text-xs text-muted-foreground font-medium">
-                  {tierDisplay.label}
+          <Card className="border border-gray-200 hover:border-gray-300 transition-all cursor-pointer hover:shadow-md h-full">
+            <CardContent className="py-2 px-3 h-full">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 bg-gray-50 rounded">
+                  <FiFileText className="w-4 h-4 text-gray-500" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-lg font-bold text-gray-700">Free Plan</p>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 flex items-center gap-1">
+                  <FiAward className="w-3 h-3 text-gray-400" />
+                  Free
                 </span>
-              </div>
-              <div className="mt-4 flex-1 flex flex-col justify-end">
-                <p className="text-3xl font-bold text-gray-700">{value}</p>
-                <p className="text-sm text-muted-foreground">{label} {subtext && <span className="text-xs">({subtext})</span>}</p>
               </div>
             </CardContent>
           </Card>
@@ -330,17 +531,20 @@ function StatCard({
     }
   }
 
+  // Regular stat cards - compact inline design
   return (
     <Link href={href}>
-      <Card className={`${styles.border} border-2 transition-all cursor-pointer hover:shadow-md`}>
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between">
-            <div className={`p-2 rounded-lg ${styles.icon}`}>{icon}</div>
-            <FiArrowRight className="w-4 h-4 text-muted-foreground" />
-          </div>
-          <div className="mt-4">
-            <p className={`text-3xl font-bold ${styles.accent}`}>{value}</p>
-            <p className="text-sm text-muted-foreground">{label} {subtext && <span className="text-xs">({subtext})</span>}</p>
+      <Card className={`${styles.border} border transition-all cursor-pointer hover:shadow-md`}>
+        <CardContent className="py-2 px-3">
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded ${styles.icon}`}>
+              <span className="[&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+            </div>
+            <div className="flex items-baseline gap-1.5">
+              <p className={`text-xl font-bold ${styles.accent}`}>{value}</p>
+              <p className="text-xs text-muted-foreground">{label}</p>
+            </div>
+            <FiArrowRight className="w-4 h-4 text-muted-foreground ml-auto" />
           </div>
         </CardContent>
       </Card>
@@ -348,25 +552,3 @@ function StatCard({
   );
 }
 
-function QuickActionButton({
-  href,
-  label,
-  description,
-}: {
-  href: string;
-  label: string;
-  description: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="flex items-center justify-between p-3 border border-gray-100 rounded-lg transition-all hover:bg-gray-50 hover:border-gray-200"
-    >
-      <div>
-        <p className="font-medium text-sm">{label}</p>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      <FiPlus className="w-4 h-4 text-gray-400" />
-    </Link>
-  );
-}

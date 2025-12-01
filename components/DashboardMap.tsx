@@ -4,6 +4,9 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { FiHome, FiUsers, FiDollarSign, FiAlertCircle, FiMaximize2 } from 'react-icons/fi';
 
+// Import mapbox CSS at module level
+import 'mapbox-gl/dist/mapbox-gl.css';
+
 interface Property {
   id: string;
   address_line1: string;
