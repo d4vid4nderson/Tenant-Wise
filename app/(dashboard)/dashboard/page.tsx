@@ -98,8 +98,8 @@ export default async function DashboardPage() {
     }
   });
 
-  // Calculate upcoming items
-  const today = new Date();
+  // Calculate upcoming items - use Central Time (Texas) for consistent behavior
+  const today = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Chicago' }));
   const currentDay = today.getDate();
   const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
 
