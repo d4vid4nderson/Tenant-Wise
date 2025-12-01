@@ -2,6 +2,7 @@
 
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/Button';
@@ -118,8 +119,11 @@ function AuthForm() {
 
       <div className="w-full max-w-4xl">
         <div className="text-center mb-8">
-          <Link href="/" className="text-4xl font-bold" style={{ background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-            Tenant Wise
+          <Link href="/" className="inline-flex flex-col items-center gap-2">
+            <Image src="/favicon.svg" alt="Tenant Wise" width={48} height={48} />
+            <span className="text-4xl font-bold" style={{ background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+              Tenant Wise
+            </span>
           </Link>
           <p className="text-muted-foreground mt-2">
             {plan ? `Join us - ${plan.charAt(0).toUpperCase() + plan.slice(1)} Plan` : 'Welcome to Tenant Wise'}

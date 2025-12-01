@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { FiMenu, FiX, FiHome, FiLogIn, FiInfo, FiDollarSign, FiHeart, FiMessageCircle, FiSend, FiRefreshCw } from 'react-icons/fi';
 
 interface ChatMessage {
@@ -186,16 +187,21 @@ export function MenuButton() {
           <div className="pb-4 border-b border-border">
             <Link
               href="/"
-              className="block w-full text-center font-bold text-3xl"
-              style={{
-                background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text'
-              }}
+              className="flex items-center justify-center gap-2"
               onClick={() => setIsOpen(false)}
             >
-              Tenant Wise
+              <Image src="/favicon.svg" alt="Tenant Wise" width={36} height={36} />
+              <span
+                className="font-bold text-3xl"
+                style={{
+                  background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text'
+                }}
+              >
+                Tenant Wise
+              </span>
             </Link>
           </div>
 

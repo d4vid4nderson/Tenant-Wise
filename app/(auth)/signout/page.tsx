@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/client';
 import { FiCheck, FiLogOut } from 'react-icons/fi';
 
@@ -63,15 +64,20 @@ export default function SignOutPage() {
         <div className="text-center mb-8">
           <Link
             href="/"
-            className="text-4xl font-bold"
-            style={{
-              background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text'
-            }}
+            className="inline-flex flex-col items-center gap-2"
           >
-            Tenant Wise
+            <Image src="/favicon.svg" alt="Tenant Wise" width={48} height={48} />
+            <span
+              className="text-4xl font-bold"
+              style={{
+                background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text'
+              }}
+            >
+              Tenant Wise
+            </span>
           </Link>
         </div>
 

@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
 import { FiHome, FiUsers, FiSettings, FiLogOut, FiFileText, FiMessageCircle, FiTool } from 'react-icons/fi';
@@ -20,8 +21,11 @@ export default async function DashboardLayout({
       {/* Sidebar - Fixed position */}
       <aside className="fixed top-0 left-0 w-64 h-screen bg-white border-r border-border p-4 flex flex-col overflow-y-auto">
         {/* Logo */}
-        <Link href="/dashboard" className="text-2xl font-bold px-4 py-3 mb-4" style={{ background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
-          Tenant Wise
+        <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 mb-4">
+          <Image src="/favicon.svg" alt="Tenant Wise" width={32} height={32} />
+          <span className="text-2xl font-bold" style={{ background: 'linear-gradient(120deg, #06b6d4 0%, #3b82f6 50%, #6366f1 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' }}>
+            Tenant Wise
+          </span>
         </Link>
 
         <nav className="space-y-1 flex-1">
