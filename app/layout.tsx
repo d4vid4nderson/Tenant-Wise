@@ -6,6 +6,14 @@ export const metadata: Metadata = {
   title: "Tenant Wise - Smart Document Generation for Small Landlords",
   description: "Generate Texas-compliant legal documents, notices, and letters for your rental properties. Save time and stay compliant.",
   keywords: ["landlord", "property management", "Texas", "legal documents", "rent notice", "lease renewal"],
+  icons: {
+    icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+    apple: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
+    ],
+  },
 };
 
 export default function RootLayout({
